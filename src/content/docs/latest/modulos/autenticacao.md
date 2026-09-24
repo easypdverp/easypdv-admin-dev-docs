@@ -455,6 +455,60 @@ const news = useMemo(() => {
 }, [response])
 ```
 
+## Contexto do Cliente no Módulo de Agente
+
+O módulo de chat de agente usa o contexto autenticado para enriquecer chamadas ao backend com o contexto do usuário e da navegação atual.
+
+### `AgentContextProvider`
+
+| Componente / Hook | Responsabilidade |
+|-------------------|-----------------|
+| `AgentContextProvider` | Mantém o contexto de cliente para o módulo de agente |
+| `useAgentSelectedEntities()` | Registra entidades selecionadas da tela atual |
+| `useAgentClientContext()` | Retorna a função que monta o contexto do cliente |
+
+O contexto enviado para o backend usa a estrutura `AgentClientContextDto`:
+
+| Campo | Tipo | Descrição |
+|-------|------|-------------|
+| `module` | string | Módulo derivado da rota atual |
+| `screen` | string | Caminho normalizado da tela atual |
+| `selected_entities` | `Record<string, unknown>` | Entidades selecionadas na interface |
+
+### Derivação do Contexto de Tela
+
+`deriveScreenContext(pathname)` converte a rota atual em um par `{ module, screen }`.
+
+| Regra | Resultado |
+|-------|-----------|
+| `/cadastros/catalogo/...` | `module = "catalog"` |
+| `cadastros`, `vendas`, `suprimentos`, `financas`, `relatorios`, `preferencias` | mapeados para nomes internos de módulo |
+| UUIDs na rota | Substituídos por `:id` |
+| Segmentos numéricos | Substituídos por `:id` |
+
+## Integração com o Módulo de Agente
+
+A autenticação é usada em fluxos que dependem do usuário logado, como o chat unificado do agente.
+
+### Componentes Relacionados
+
+| Componente | Responsabilidade |
+|------------|-----------------|
+| `AgentChatWidget` | Exibe o botão flutuante do assistente |
+| `UnifiedChatContainer` | Carrega o painel de chat unificado |
+| `ChatPanel` | Orquestra as abas do assistente, mensagens e encaminhamento humano |
+| `useUnifiedChat()` | Une o fluxo de IA e o fluxo de atendimento humano |
+| `useChatwootChat()` | Gerencia a conversa com Chatwoot |
+| `useAgentChat()` | Gerencia o fluxo de IA interno |
+
+### Fluxo de Dados
+
+1. `useAuth()` disponibiliza `currentUser`
+2. `useChatwootIdentity()` usa `currentUser.id`, `name`, `email` e `telephone` para identificar o contato no Chatwoot
+3. `useAgentClientContext()` monta o contexto enviado nas requisições do assistente
+4. `useUnifiedChat()` seleciona a origem da conversa entre IA e atendimento humano
+5. `ChatPanel` renderiza `ThreadPrimitive.Messages`, `ComposerPrimitive.Input` e `ComposerPrimitive.Send`
+
 ## Veja Também
 
 - [Error Handling](/arquitetura/error-handling/) — Tratamento centralizado de erros, incluindo erros de autenticação
