@@ -33,22 +33,7 @@ const axiosConfig = {
 const client = axios.create(axiosConfig);
 ```
 
-A `baseURL` vem da variavel de ambiente `VITE_APP_API_URL`, configurada em `.env.development` para desenvolvimento e injetada pelo CI/CD em producao. O carregamento das variaveis de ambiente passa pela funcao `getProjectEnvVariables()` em `src/shared/projectEnvVariables.ts`, que resolve valores vindos de placeholders de container ou de `import.meta.env`.
-
-### Variaveis de Ambiente
-
-A camada de ambiente usa o tipo `ProjectEnvVariablesType` e expoe os valores por meio de `getProjectEnvVariables()`.
-
-| Variavel | Descricao | Origem tipica |
-|----------|-----------|---------------|
-| `VITE_GENERATE_SOURCEMAP` | Controla a geracao de sourcemaps | Build ou container |
-| `VITE_APP_API_URL` | URL base da API | Build ou container |
-| `VITE_APP_NEWS_API_URL` | URL base da API de noticias | Build ou container |
-| `VITE_APP_CHATWOOT_BASE_URL` | URL base do Chatwoot | Build ou container |
-| `VITE_APP_CHATWOOT_INBOX_IDENTIFIER` | Identificador da inbox do Chatwoot | Build ou container |
-| `VITE_APP_GOOGLE_CLIENT_ID` | Client ID do Google OAuth | Build ou container |
-
-A resolucao usa a logica de placeholder: quando o valor ainda contem `VITE_`, a aplicacao le de `import.meta.env`; quando o valor ja foi substituido, o valor injetado e usado diretamente.
+A `baseURL` vem da variável de ambiente `VITE_APP_API_URL`, configurada em `.env.development` para desenvolvimento e injetada pelo CI/CD em produção.
 
 ### Wrappers Tipados
 
@@ -81,7 +66,7 @@ const destroy = <R = any>(url: string, config?: AxiosRequestConfig): Promise<Api
 | `get`     | GET         | Nao         | Listagens, detalhes         |
 | `post`    | POST        | Sim         | Criacao de recursos         |
 | `put`     | PUT         | Sim         | Atualizacao completa        |
-| `patch`    | PATCH       | Sim         | Atualizacao parcial         |
+| `patch`   | PATCH       | Sim         | Atualizacao parcial         |
 | `destroy` | DELETE      | Nao         | Remocao de recursos         |
 
 ### Tipo ApiResponse
@@ -126,69 +111,44 @@ O formato do header é `{type} {token}`, onde `type` é tipicamente `"Bearer"`.
 
 ### Response Interceptor
 
-Trata respostas com `success: false`, renova o token quando recebe status 401 e libera respostas binárias ou de streaming sem validar o envelope da API.
-
-O fluxo de renovacao usa uma promessa compartilhada em memoria para centralizar requisicoes concorrentes de refresh. A funcao auxiliar `getRefreshedAuth(refreshTokenValue)` guarda a operacao em `refreshPromise`, faz a chamada para `refreshToken`, persiste o novo `AuthModel` com `setAuth()` e libera a promise ao finalizar.
+Trata respostas com `success: false`, implementa refresh automático de token quando recebe status 401 e libera respostas binárias ou de streaming sem validar o envelope da API:
 
 ```typescript
-let refreshPromise: Promise<AuthModel> | null = null;
-
-const getRefreshedAuth = (refreshTokenValue: string): Promise<AuthModel> => {
-    if (!refreshPromise) {
-        refreshPromise = refreshToken(refreshTokenValue)
-            .then(rs => {
-                setAuth(rs.data)
-                return rs.data
-            })
-            .finally(() => {
-                refreshPromise = null
-            })
-    }
-    return refreshPromise
-}
-```
-
-O interceptor de resposta utiliza esse fluxo para reenviar a requisicao original com o novo token:
-
-```typescript
-const onResponse = async (response: AxiosResponse<ApiResponse>): Promise<AxiosResponse> => {
-    const responseType = response.config?.responseType;
-    if (responseType === 'blob' || responseType === 'arraybuffer' || responseType === 'stream') {
-        return Promise.resolve(response);
-    }
-
-    if (!response.data.success) {
-        const originalRequest = response.config as CustomAxiosRequestConfig
-        const auth = getAuth()
-        const errorResult = new ApiResponseError(response.data)
-
-        if (errorResult.status === 401 && auth?.refresh_token && !originalRequest._retry) {
-            originalRequest._retry = true
-            try {
-                const newAuth = await getRefreshedAuth(auth.refresh_token);
-                originalRequest.headers['Authorization'] = 'Bearer ' + newAuth.token
-                return client(originalRequest);
-            } catch (error: unknown) {
-                if (axios.isAxiosError(error) && error.response?.data) {
-                    return Promise.reject(new ApiResponseError(error.response.data));
-                }
-                removeAuth();
-                return Promise.reject(error);
-            }
-        }
-        return Promise.reject(errorResult);
-    }
+const onResponse = async (response: AxiosResponse<ApiResponse>): Promise<AxiosResponse<any, any>> => {
+  const responseType = response.config?.responseType;
+  if (responseType === 'blob' || responseType === 'arraybuffer' || responseType === 'stream') {
     return Promise.resolve(response);
+  }
+
+  if (!response.data.success) {
+    const originalRequest = response.config as CustomAxiosRequestConfig;
+    const auth = getAuth();
+    const errorResult = new ApiResponseError(response.data);
+
+    if (errorResult.status === 401 && auth?.refresh_token && !originalRequest._retry) {
+      originalRequest._retry = true;
+      try {
+        const rs = await refreshToken(auth.refresh_token);
+        setAuth(rs.data);
+        originalRequest.headers['Authorization'] = 'Bearer ' + rs.data.token;
+        return client(originalRequest);
+      } catch (error) {
+        removeAuth();
+        return Promise.reject(error);
+      }
+    }
+    return Promise.reject(errorResult);
+  }
+  return Promise.resolve(response);
 };
 ```
 
 **Fluxo de refresh:**
 
-1. Requisicao retorna `success: false` com status 401
-2. Se existe `refresh_token` e a requisicao nao e uma retry, a renovacao e solicitada
-3. Requisicoes concorrentes compartilham a mesma promise de refresh
-4. Em caso de sucesso, a autenticacao e atualizada e a requisicao original e reenviada
-5. Em caso de falha no refresh, a resposta de erro e convertida em `ApiResponseError` quando possivel; caso contrario, a autenticacao e removida e a promise e rejeitada
+1. Requisição retorna `success: false` com status 401
+2. Se existe `refresh_token` e a requisição não é uma retry, tenta renovar o token
+3. Em caso de sucesso, atualiza o auth e reenviá a requisição original
+4. Em caso de falha no refresh, remove a autenticação e rejeita a promise
 
 **Fluxo de respostas binárias e streaming:**
 
@@ -225,40 +185,20 @@ export const ProductEndpoints = {
 
 ### Convencoes Comuns
 
-| Propriedade         | Tipo   | Descricao                               |
-|--------------------|--------|------------------------------------------|
-| `list`             | string | Listagem paginada do recurso             |
-| `add`              | string | Criacao de novo recurso                  |
-| `edit(id)`         | funcao | Atualizacao de recurso por ID            |
-| `details(id)`      | funcao | Detalhes de recurso por ID               |
-| `delete(id)`       | funcao | Remocao de recurso por ID                |
-| `toggleStatus(id)`  | funcao | Ativar/desativar recurso por ID          |
-| `deleteBatch`       | string | Remocao em lote                          |
-| `toggleStatusBatch` | string | Ativar/desativar em lote                 |
-
-### Rotas de Navegacao
-
-O arquivo `src/api/core/links.ts` centraliza as rotas usadas na interface e na navegacao interna do ERP. Ele agrupa URLs por dominio e expõe constantes para telas de listagem, detalhe, edicao e configuracao.
-
-#### Paginas de CRM e Feedback
-
-| Constante | Valor | Descricao |
-|-----------|-------|-----------|
-| `CLIENT_FEEDBACK_PAGE_URL` | `/crm/pesquisa-satisfacao` | Tela principal de pesquisa de satisfacao |
-| `CLIENT_FEEDBACK_LIST_PAGE_URL` | `/crm/pesquisa-satisfacao/lista` | Listagem de pesquisas de satisfacao |
-| `CLIENT_FEEDBACK_NEW_PAGE_URL` | `/crm/pesquisa-satisfacao/lista/novo` | Cadastro de pesquisa de satisfacao |
-| `CLIENT_FEEDBACK_EDIT_PAGE_URL(id)` | `/crm/pesquisa-satisfacao/lista/edita/{id}` | Edicao de pesquisa de satisfacao |
-
-#### Configuracoes de Preferencias
-
-| Constante | Valor | Descricao |
-|-----------|-------|-----------|
-| `TAX_SCENARIO_SETTINGS_PAGE_URL` | `/preferencias/cenario-fiscal` | Tela de configuracao de cenario fiscal |
-| `PAYMENT_GATEWAYS_LIST_PAGE_URL` | `/preferencias/financas/gateways-pagamento/lista` | Listagem de gateways de pagamento |
+| Propriedade         | Tipo       | Descricao                                      |
+|---------------------|------------|-------------------------------------------------|
+| `list`              | string     | Listagem paginada do recurso                    |
+| `add`               | string     | Criacao de novo recurso                         |
+| `edit(id)`          | funcao     | Atualizacao de recurso por ID                   |
+| `details(id)`       | funcao     | Detalhes de recurso por ID                      |
+| `delete(id)`        | funcao     | Remocao de recurso por ID                       |
+| `toggleStatus(id)`   | funcao     | Ativar/desativar recurso por ID                 |
+| `deleteBatch`       | string     | Remocao em lote                                 |
+| `toggleStatusBatch` | string     | Ativar/desativar em lote                        |
 
 ## Catalogo de Endpoints
 
-O ERP possui **93 arquivos de endpoints** organizados em 11 dominios. A seguir, o catalogo completo de cada arquivo com todas as suas propriedades.
+O ERP possui **90 arquivos de endpoints** organizados em 11 domínios. A seguir, o catálogo completo de cada arquivo com todas as suas propriedades.
 
 ### Auth (1 arquivo)
 
@@ -370,7 +310,7 @@ O ERP possui **93 arquivos de endpoints** organizados em 11 dominios. A seguir, 
 | ConversionUnitEndpoints | `deleteBatch` | `/preferences/conversion-unit/del/batch` | Excluir em lote |
 | ConversionUnitEndpoints | `toggleStatusBatch` | `/preferences/conversion-unit/status/batch` | Ativar/desativar em lote |
 
-### Vendas (8 arquivos)
+### Vendas (7 arquivos)
 
 | Arquivo | Propriedade | Path | Descricao |
 |---------|-------------|------|-----------|
@@ -394,19 +334,6 @@ O ERP possui **93 arquivos de endpoints** organizados em 11 dominios. A seguir, 
 | SalesReportEndpoints | `invoiceProduct` | `/sales/reports/invoice/product` | Relatorio por produto |
 | SalesReportEndpoints | `invoiceProgress` | `/sales/reports/invoice/progress` | Relatorio de progresso fiscal |
 | SalesReportEndpoints | `invoiceIcms` | `/sales/reports/invoice/icms` | Relatorio de ICMS |
-| SalesOccurrenceEndpoints | `list` | `/sales/occurrence/list` | Listar ocorrencias de venda |
-| SalesOccurrenceEndpoints | `add` | `/sales/occurrence/add` | Criar ocorrencia de venda |
-| SalesOccurrenceEndpoints | `edit(id)` | `/sales/occurrence/edit/{id}` | Editar ocorrencia de venda |
-| SalesOccurrenceEndpoints | `details(id)` | `/sales/occurrence/{id}` | Detalhes da ocorrencia |
-| SalesOccurrenceEndpoints | `changeStatus(id)` | `/sales/occurrence/{id}/status` | Alterar status da ocorrencia |
-| SalesOccurrenceEndpoints | `delete(id)` | `/sales/occurrence/{id}` | Excluir ocorrencia |
-| SalesOccurrenceEndpoints | `addEvidence(id)` | `/sales/occurrence/{id}/evidence/add` | Adicionar evidencia |
-| SalesOccurrenceEndpoints | `addItem(id)` | `/sales/occurrence/{id}/item/add` | Adicionar item |
-| SalesOccurrenceEndpoints | `addComment(id)` | `/sales/occurrence/{id}/comment/add` | Adicionar comentario |
-| SalesOccurrenceEndpoints | `updateEvidence(id, evidenceId)` | `/sales/occurrence/{id}/evidence/{evidenceId}` | Atualizar evidencia |
-| SalesOccurrenceEndpoints | `deleteEvidence(id, evidenceId)` | `/sales/occurrence/{id}/evidence/{evidenceId}` | Excluir evidencia |
-| SalesOccurrenceEndpoints | `updateItem(id, itemId)` | `/sales/occurrence/{id}/item/{itemId}` | Atualizar item |
-| SalesOccurrenceEndpoints | `deleteItem(id, itemId)` | `/sales/occurrence/{id}/item/{itemId}` | Excluir item |
 | PlanogramEndpoints | `list` | `/sales/planogram/list` | Listar planogramas |
 | PlanogramEndpoints | `add` | `/sales/planogram/add` | Criar planograma |
 | PlanogramEndpoints | `details(id)` | `/sales/planogram/{id}` | Detalhes do planograma |
@@ -537,7 +464,7 @@ O ERP possui **93 arquivos de endpoints** organizados em 11 dominios. A seguir, 
 | FinanceReportEndpoints | `receivables` | `/finance/reports/receivables` | Relatório de contas a receber |
 | FinanceReportEndpoints | `paymentsReceived` | `/finance/reports/payments-received` | Relatório de pagamentos recebidos |
 
-### Suprimentos/Estoque (18 arquivos)
+### Suprimentos/Estoque (17 arquivos)
 
 | Arquivo | Propriedade | Path | Descricao |
 |---------|-------------|------|-----------|
@@ -635,25 +562,16 @@ O ERP possui **93 arquivos de endpoints** organizados em 11 dominios. A seguir, 
 | SupplyTaskEndpoints | `editItem(supplyId, itemId)` | `/supply/task/supply/{supplyId}/edit/{itemId}` | Editar item |
 | SupplyTaskEndpoints | `taskSupplyHistory(taskId)` | `/supply/task/supply/{taskId}/history` | Histórico da tarefa |
 | SupplyTaskEndpoints | `taskSupplyItemDetails(itemId)` | `/supply/task/supply/item/{itemId}` | Detalhes do item |
-| SupplyCheckTaskEndpoints | `list` | `/supply/task/supply-check/list` | Listar tarefas de conferência de abastecimento |
-| SupplyCheckTaskEndpoints | `add(pickListId)` | `/supply/task/supply-check/add/{pickListId}` | Criar tarefa de conferência a partir de picklist |
-| SupplyCheckTaskEndpoints | `taskSupplyDetails(taskId)` | `/supply/task/supply-check/{taskId}` | Detalhes da tarefa |
-| SupplyCheckTaskEndpoints | `finish(supplyId)` | `/supply/task/supply-check/{supplyId}/finish` | Finalizar tarefa |
-| SupplyCheckTaskEndpoints | `cancel(supplyId)` | `/supply/task/supply-check/{supplyId}/cancel` | Cancelar tarefa |
-| SupplyCheckTaskEndpoints | `itemList(taskId)` | `/supply/task/supply-check/{taskId}/item/list` | Listar itens da tarefa |
-| SupplyCheckTaskEndpoints | `editItem(supplyId, itemId)` | `/supply/task/supply-check/{supplyId}/edit/{itemId}` | Editar item |
-| SupplyCheckTaskEndpoints | `taskSupplyHistory(taskId)` | `/supply/task/supply-check/{taskId}/history` | Historico da tarefa |
-| SupplyCheckTaskEndpoints | `taskSupplyItemDetails(itemId)` | `/supply/task/supply-check/item/{itemId}` | Detalhes do item |
-| SupplyReportEndpoints | `inventoryInOut` | `/supply/reports/inventory/in-out` | Relatorio de entradas e saidas |
-| SupplyReportEndpoints | `inventoryBalance` | `/supply/reports/inventory/balance` | Relatorio de saldo |
-| SupplyReportEndpoints | `inventoryBiggestMovement` | `/supply/reports/inventory/biggest-movement` | Maiores movimentacoes |
-| SupplyReportEndpoints | `inventoryWithoutMovement` | `/supply/reports/inventory/without-movement` | Produtos sem movimentacao |
-| SupplyReportEndpoints | `inventoryBelowMinimum` | `/supply/reports/inventory/below-minimum` | Estoque abaixo do minimo |
-| SupplyReportEndpoints | `inventoryFinanceOverview` | `/supply/reports/inventory/finance-overview` | Visao financeira do estoque |
-| SupplyReportEndpoints | `inventoryUsage` | `/supply/reports/inventory/usage` | Relatorio de uso do estoque |
-| SupplyReportEndpoints | `nfeInOperation` | `/supply/reports/nfe-in/operation` | Relatorio de operacoes NF-e entrada |
-| SupplyReportEndpoints | `nfeInSupplier` | `/supply/reports/nfe-in/supplier` | Relatorio por fornecedor |
-| SupplyReportEndpoints | `nfeInProduct` | `/supply/reports/nfe-in/product` | Relatorio por produto |
+| SupplyReportEndpoints | `inventoryInOut` | `/supply/reports/inventory/in-out` | Relatório de entradas e saídas |
+| SupplyReportEndpoints | `inventoryBalance` | `/supply/reports/inventory/balance` | Relatório de saldo |
+| SupplyReportEndpoints | `inventoryBiggestMovement` | `/supply/reports/inventory/biggest-movement` | Maiores movimentações |
+| SupplyReportEndpoints | `inventoryWithoutMovement` | `/supply/reports/inventory/without-movement` | Produtos sem movimentação |
+| SupplyReportEndpoints | `inventoryBelowMinimum` | `/supply/reports/inventory/below-minimum` | Estoque abaixo do mínimo |
+| SupplyReportEndpoints | `inventoryFinanceOverview` | `/supply/reports/inventory/finance-overview` | Visão financeira do estoque |
+| SupplyReportEndpoints | `inventoryUsage` | `/supply/reports/inventory/usage` | Relatório de uso do estoque |
+| SupplyReportEndpoints | `nfeInOperation` | `/supply/reports/nfe-in/operation` | Relatório de operações NF-e entrada |
+| SupplyReportEndpoints | `nfeInSupplier` | `/supply/reports/nfe-in/supplier` | Relatório por fornecedor |
+| SupplyReportEndpoints | `nfeInProduct` | `/supply/reports/nfe-in/product` | Relatório por produto |
 | SupplyReportEndpoints | `nfeInProgress` | `/supply/reports/nfe-in/progress` | Progresso de NF-e entrada |
 | SupplyReportEndpoints | `nfeInProductSupplier` | `/supply/reports/nfe-in/product-supplier` | Relatório produto-fornecedor |
 | SupplyReportEndpoints | `buyOrder` | `/supply/reports/buy-order` | Relatório de pedidos de compra |
@@ -669,12 +587,6 @@ O ERP possui **93 arquivos de endpoints** organizados em 11 dominios. A seguir, 
 | SupplierContactEndpoints | `toggleStatus(id)` | `/registrations/supplier/status/{id}` | Ativar/desativar fornecedor |
 | SupplierContactEndpoints | `deleteBatch` | `/registrations/supplier/del-batch` | Excluir em lote |
 | SupplierContactEndpoints | `toggleStatusBatch` | `/registrations/supplier/status-batch` | Ativar/desativar em lote |
-| GoodsReceiptEndpoints | `create(nfeInId)` | `/inventory/goods-receipt/create/{nfeInId}` | Criar recebimento de mercadorias a partir de NF-e de entrada |
-| GoodsReceiptEndpoints | `updateItem(id, itemId)` | `/inventory/goods-receipt/{id}/items/{itemId}` | Atualizar item do recebimento |
-| GoodsReceiptEndpoints | `checkAll(id)` | `/inventory/goods-receipt/{id}/check-all` | Conferir todos os itens |
-| GoodsReceiptEndpoints | `finish(id)` | `/inventory/goods-receipt/{id}/finish` | Finalizar recebimento |
-| GoodsReceiptEndpoints | `details(id)` | `/inventory/goods-receipt/{id}` | Detalhes do recebimento |
-| GoodsReceiptEndpoints | `reverse(id)` | `/inventory/goods-receipt/del/{id}` | Reverter recebimento |
 
 ### NFe/Fiscal (11 arquivos)
 
@@ -696,19 +608,17 @@ O ERP possui **93 arquivos de endpoints** organizados em 11 dominios. A seguir, 
 | NfeInEndpoints | `importXml` | `/supply/purchase-invoice/import/xml` | Importar XML |
 | NfeInEndpoints | `detailsByAccessKey(accessKey)` | `/supply/purchase-invoice/details/{accessKey}` | Detalhes por chave de acesso |
 | NfeInEndpoints | `importByAccessKey(accessKey)` | `/supply/purchase-invoice/import/access-key/{accessKey}` | Importar por chave de acesso |
-| NfeOutEndpoints | `list` | `/sales/sales-invoice/list` | Listar NF-e de saida |
-| NfeOutEndpoints | `add` | `/sales/sales-invoice/add` | Adicionar NF-e de saida |
-| NfeOutEndpoints | `addReturn` | `/sales/sales-invoice/return` | Criar devolucao de saida |
-| NfeOutEndpoints | `edit(id)` | `/sales/sales-invoice/edit/{id}` | Editar NF-e de saida |
+| NfeOutEndpoints | `list` | `/sales/sales-invoice/list` | Listar NF-e de saída |
+| NfeOutEndpoints | `add` | `/sales/sales-invoice/add` | Adicionar NF-e de saída |
+| NfeOutEndpoints | `edit(id)` | `/sales/sales-invoice/edit/{id}` | Editar NF-e de saída |
 | NfeOutEndpoints | `details(id)` | `/sales/sales-invoice/{id}` | Detalhes da NF-e |
 | NfeOutEndpoints | `delete(id)` | `/sales/sales-invoice/del/{id}` | Excluir NF-e |
 | NfeOutEndpoints | `changeStatus(id)` | `/sales/sales-invoice/status/{id}` | Alterar status |
 | NfeOutEndpoints | `cancelStatus(id)` | `/sales/sales-invoice/status/{id}/cancel` | Cancelar status |
 | NfeOutEndpoints | `authorize(id)` | `/sales/sales-invoice/authorize/{id}` | Autorizar NF-e |
 | NfeOutEndpoints | `reissue(id)` | `/sales/sales-invoice/reissuance/{id}` | Reemitir NF-e |
-| NfeOutEndpoints | `launchInventory(idNfeOut)` | `/sales/sales-invoice/launch-inventory/{idNfeOut}` | Lancar no estoque |
-| NfeOutEndpoints | `returnableBalance(id)` | `/sales/sales-invoice/{id}/returnable-balance` | Consultar saldo retornavel |
-| NfeOutEndpoints | `transactionNature` | `/sales/sales-invoice/transaction-nature` | Natureza de operacao |
+| NfeOutEndpoints | `launchInventory(idNfeOut)` | `/sales/sales-invoice/launch-inventory/{idNfeOut}` | Lançar no estoque |
+| NfeOutEndpoints | `transactionNature` | `/sales/sales-invoice/transaction-nature` | Natureza de operação |
 | NfeOutEndpoints | `nextSequenceNumber` | `/sales/sales-invoice/next-sequence` | Proximo numero sequencial |
 | NfeOutEndpoints | `defaultSeriesNumber` | `/sales/sales-invoice/default-series-number` | Numero de serie padrao |
 | NfeOutEndpoints | `defaultTransactionNature` | `/sales/sales-invoice/default-transaction-nature` | Natureza de operação padrao |
@@ -809,14 +719,7 @@ O ERP possui **93 arquivos de endpoints** organizados em 11 dominios. A seguir, 
 | CommunityContactEndpoints | `toggleStatus(id)` | `/registrations/community/status/{id}` | Ativar/desativar contato |
 | CommunityContactEndpoints | `deleteBatch` | `/registrations/community/del-batch` | Excluir em lote |
 | CommunityContactEndpoints | `toggleStatusBatch` | `/registrations/community/status-batch` | Ativar/desativar em lote |
-| AddressEndpoints | `details(cep)` | `/address/resolve-cep/{cep}` | Consultar endereco por CEP |
-| ClientFeedbackEndpoints | `list` | `/crm/client-feedback/list` | Listar pesquisas de satisfacao de clientes |
-| ClientFeedbackEndpoints | `add` | `/crm/client-feedback/add` | Criar pesquisa de satisfacao |
-| ClientFeedbackEndpoints | `edit(id)` | `/crm/client-feedback/edit/{id}` | Editar pesquisa de satisfacao |
-| ClientFeedbackEndpoints | `details(id)` | `/crm/client-feedback/{id}` | Detalhes da pesquisa |
-| ClientFeedbackEndpoints | `delete(id)` | `/crm/client-feedback/del/{id}` | Excluir pesquisa |
-| ClientFeedbackEndpoints | `toggleStatus(id)` | `/crm/client-feedback/status/{id}` | Ativar/desativar pesquisa |
-| ClientFeedbackEndpoints | `responses(id)` | `/crm/client-feedback/{id}/responses/list` | Listar respostas da pesquisa |
+| AddressEndpoints | `details(cep)` | `/address/resolve-cep/{cep}` | Consultar endereço por CEP |
 
 ### Sistema/Configuracao (10 arquivos)
 
@@ -827,8 +730,7 @@ O ERP possui **93 arquivos de endpoints** organizados em 11 dominios. A seguir, 
 | SystemEndpoints | `owner` | `/system/owner` | Proprietário do sistema |
 | SystemEndpoints | `modules` | `/system/modules` | Módulos disponíveis |
 | SystemEndpoints | `plan` | `/system/plan` | Plano do sistema |
-| SystemEndpoints | `billing` | `/system/billing` | Cobranca do sistema |
-| SystemEndpoints | `clientApp` | `/system/client-app` | Aplicacao cliente do sistema |
+| SystemEndpoints | `billing` | `/system/billing` | Cobrança do sistema |
 | SystemTypeEndpoints | `list` | `/system-type/list` | Listar tipos de sistema |
 | SystemTypeEndpoints | `getSystemTypeByClassName(className)` | `/system-type/{className}` | Buscar tipo por classe |
 | CompanyInformationEndpoints | `edit` | `/preferences/company` | Editar dados da empresa |
@@ -849,13 +751,9 @@ O ERP possui **93 arquivos de endpoints** organizados em 11 dominios. A seguir, 
 | CommunicationProviderEndpoints | `details(id)` | `/preferences/communication-provider/{id}` | Detalhes do provedor |
 | CommunicationProviderEndpoints | `delete(id)` | `/preferences/communication-provider/del/{id}` | Excluir provedor |
 | CommunicationProviderEndpoints | `toggleStatus(id)` | `/preferences/communication-provider/status/{id}` | Ativar/desativar provedor |
-| CommunicationProviderEndpoints | `listCommunicationProviderServices` | `/preferences/communication-provider/service/list` | Listar servicos de comunicacao |
-| SystemNotificationPreferencesEndpoints | `edit` | `/preferences/config/notification` | Editar preferencias de notificacao |
-| SystemNotificationPreferencesEndpoints | `details` | `/preferences/config/notification` | Detalhes das preferencias |
-| AgentEndpoints | `chat` | `/agent/chat` | Chat com agente de IA |
-| AgentEndpoints | `chatStream` | `/agent/chat/stream` | Chat em streaming do agente |
-| AgentEndpoints | `conversations` | `/agent/conversations` | Listar conversas do agente |
-| AgentEndpoints | `conversationMessages(conversationId)` | `/agent/conversations/{conversationId}/messages` | Mensagens de uma conversa |
+| CommunicationProviderEndpoints | `listCommunicationProviderServices` | `/preferences/communication-provider/service/list` | Listar serviços de comunicação |
+| SystemNotificationPreferencesEndpoints | `edit` | `/preferences/config/notification` | Editar preferências de notificação |
+| SystemNotificationPreferencesEndpoints | `details` | `/preferences/config/notification` | Detalhes das preferências |
 
 ### Dashboard (3 arquivos)
 
@@ -885,24 +783,15 @@ O ERP possui **93 arquivos de endpoints** organizados em 11 dominios. A seguir, 
 | DashboardSalesEndpoints | `bestSellersCategories` | `/dashboard/sales/best-sellers/categories` | Categorias mais vendidas |
 | DashboardSalesEndpoints | `averageTicket` | `/dashboard/sales/average-ticket` | Ticket médio |
 
-### Outros (14 arquivos)
+### Outros (12 arquivos)
 
 | Arquivo | Propriedade | Path | Descricao |
 |---------|-------------|------|-----------|
-| HomeEndpoints | `announcements` | `/home/announcements` | Anuncios |
-| HomeEndpoints | `news` | `/home/news` | Novidades |
-| HomeEndpoints | `modules` | `/home/modules` | Modulos disponiveis |
+| HomeEndpoints | `setupGuide` | `/home/setup-guide` | Guia de configuração |
+| HomeEndpoints | `announcements` | `/home/announcements` | Anúncios |
+| HomeEndpoints | `news` | `/home/news` | Notícias |
+| HomeEndpoints | `modules` | `/home/modules` | Módulos disponíveis |
 | HomeEndpoints | `dismissFirstAccess` | `/account/first-access` | Dispensar primeiro acesso |
-| PushNotificationEndpoints | `list` | `/push-notification/list` | Listar push notifications |
-| PushNotificationEndpoints | `add` | `/push-notification/add` | Criar push notification |
-| PushNotificationEndpoints | `details(id)` | `/push-notification/{id}` | Detalhes da push notification |
-| PushNotificationEndpoints | `update(id)` | `/push-notification/{id}` | Atualizar push notification |
-| PushNotificationEndpoints | `send(id)` | `/push-notification/{id}/send` | Enviar push notification |
-| PushNotificationEndpoints | `cancel(id)` | `/push-notification/{id}/cancel` | Cancelar envio |
-| PushNotificationEndpoints | `consumers` | `/push-notification/consumer/list` | Listar consumidores |
-| SetupGuideEndpoints | `state` | `/setup-guide/state` | Estado do guia de configuracao |
-| SetupGuideEndpoints | `dismiss` | `/setup-guide/dismiss` | Dispensar guia de configuracao |
-| SetupGuideEndpoints | `stepSkip(code)` | `/setup-guide/steps/{code}/skip` | Pular etapa do guia |
 | ScheduleEndpoints | `list` | `/schedule/list` | Listar agendamentos |
 | ScheduleEndpoints | `add` | `/schedule/add` | Criar agendamento |
 | ScheduleEndpoints | `edit(id)` | `/schedule/edit/{id}` | Editar agendamento |
@@ -968,26 +857,28 @@ O ERP possui **93 arquivos de endpoints** organizados em 11 dominios. A seguir, 
 | NotificationsEndpoints | `stream` | `/notification/stream` | Stream de notificações (SSE) |
 | BarcodeNotFoundEndpoints | `list` | `/sales/reports/barcode-not-found` | Listar códigos de barras não encontrados |
 | BarcodeNotFoundEndpoints | `addToPlanogram` | `/sales/reports/barcode-not-found/add-to-planogram` | Adicionar ao planograma |
-| SupportPageEndpoints | `support` | `/suporte` | Pagina de suporte |
-| SystemUserEndpoints | `dashboard` | `/inicio/indice` | Indice do usuario do sistema |
+| AgentEndpoints | `chat` | `/agent/chat` | Chat do agente |
+| AgentEndpoints | `chatStream` | `/agent/chat/stream` | Chat em streaming do agente |
+| AgentEndpoints | `conversations` | `/agent/conversations` | Listar conversas do agente |
+| AgentEndpoints | `conversationMessages(conversationId)` | `/agent/conversations/{conversationId}/messages` | Mensagens de uma conversa |
 
 ## Resumo
 
-O ERP Despensinha possui **93 arquivos de endpoints** distribuidos em 11 dominios:
+O ERP Despensinha possui **90 arquivos de endpoints** distribuídos em 11 domínios:
 
 | Dominio | Arquivos | Endpoints |
 |---------|----------|-----------|
 | Auth | 1 | 6 |
 | Conta/Usuarios | 5 | 44 |
 | Catalogo | 5 | 46 |
-| Vendas | 8 | 60 |
+| Vendas | 7 | 45 |
 | Financeiro | 14 | 96 |
 | Suprimentos/Estoque | 17 | 107 |
 | NFe/Fiscal | 11 | 85 |
 | Contatos | 5 | 30 |
-| Sistema/Configuracao | 10 | 30 |
+| Sistema/Configuracao | 10 | 29 |
 | Dashboard | 3 | 23 |
-| Outros | 14 | 76 |
-| **Total** | **93** | **601** |
+| Outros | 12 | 64 |
+| **Total** | **90** | **575** |
 
 Todos os endpoints seguem o padrão de objetos constantes exportados, com paths estáticos para operações sem parâmetros e arrow functions para paths dinâmicos. Os wrappers tipados em `axios.ts` garantem que todas as chamadas retornem `ApiResponse<T>`, mantendo consistência na camada de comunicação. Endpoints que utilizam `responseType` binário ou em streaming retornam o payload cru e são tratados sem o envelope padrão da API.
