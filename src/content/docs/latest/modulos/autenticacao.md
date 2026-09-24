@@ -382,6 +382,69 @@ O logout limpa o estado autenticado e remove os tokens armazenados, encerrando a
 | Limpeza do `currentUser` | Interface volta ao estado anônimo |
 | Redirecionamento | Usuário retorna para a tela de acesso |
 
+## Configuração de News na Home
+
+A Home consome a lista de notícias por meio do componente `NewsSection`, que usa `react-query` para buscar dados da API configurada em ambiente.
+
+### Arquivo principal
+
+| Arquivo | Responsabilidade |
+|---------|-----------------|
+| `src/app/pages/home/components/NewsSection.tsx` | Renderização da seção de notícias |
+| `src/app/pages/home/core/_requests.ts` | Requisições HTTP da Home |
+
+### Fluxo de dados
+
+1. `NewsSection` executa `useQuery(['home-news'], () => getNews(), { retry: false })`
+2. `getNews()` lê `VITE_APP_NEWS_API_URL` via `getProjectEnvVariables()`
+3. A requisição é feita com `axios.get<NewsDto[]>(VITE_APP_NEWS_API_URL)`
+4. A resposta é normalizada com `useMemo`
+5. Se a resposta não for um array, a tela usa uma lista vazia
+
+### Detalhes do componente `NewsSection`
+
+| Item | Valor |
+|------|-------|
+| Hook de consulta | `useQuery` |
+| Chave da query | `['home-news']` |
+| Retry | `false` |
+| Normalização dos dados | `useMemo` |
+| Tipo esperado | `NewsDto[]` |
+
+### Configuração de ambiente
+
+| Variável | Descrição |
+|----------|-------------|
+| `VITE_APP_NEWS_API_URL` | Endpoint completo da API de notícias exibidas na Home |
+
+### Implementação da requisição
+
+```ts
+import axios from 'axios'
+import { get } from '../../../../api/axios'
+import { HomeEndpoints } from '../../../../api/endpoints/HomeEndpoints'
+import { getProjectEnvVariables } from '../../../../shared/projectEnvVariables'
+import type {
+  SetupLevelDto,
+  AnnouncementDto,
+  NewsDto,
+} from '../types'
+
+export const getNews = () => {
+  const { VITE_APP_NEWS_API_URL } = getProjectEnvVariables().envVariables
+  return axios.get<NewsDto[]>(VITE_APP_NEWS_API_URL).then(res => res.data)
+}
+```
+
+### Normalização da resposta
+
+```ts
+const news = useMemo(() => {
+  if (!response || !(response instanceof Array)) return []
+  return response;
+}, [response])
+```
+
 ## Veja Também
 
 - [Error Handling](/arquitetura/error-handling/) — Tratamento centralizado de erros, incluindo erros de autenticação
