@@ -13,6 +13,7 @@ export const versions: Version[] = [
   { slug: 'latest', label: 'Latest', badge: 'Atual', isCurrent: true },
   { slug: 'v1-27-1', label: 'v1.27.1', isCurrent: false },
   { slug: 'v1-27-2', label: 'v1.27.2', isCurrent: false },
+  { slug: 'v1-31-0', label: 'v1.31.0', isCurrent: false },
 ];
 
 export const defaultVersion = 'latest';

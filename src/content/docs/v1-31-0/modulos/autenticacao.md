@@ -78,7 +78,6 @@ O `AuthContext` é exportado a partir de `src/app/modules/auth/core/Auth.tsx`, o
 | `saveAuth` | função | Persiste tokens e estado autenticado |
 | `logout` | função | Remove sessão e limpa credenciais |
 
-
 ## Módulo de Códigos de Barras de Produto
 
 O módulo de autenticação é consumido por páginas protegidas, e a área de cadastro de produtos usa o mesmo padrão de estado centralizado para carregar dados vinculados ao usuário autenticado. No fluxo de produto, o sistema trabalha com uma coleção de códigos de barras em `ProductDto.barcodes`, com identificação de código principal, tipo do código e validações específicas.
@@ -232,4 +231,9 @@ Se a API retorna um produto, o formulário exibe a mensagem:
 |----------|-----------|
 | GTIN localizado | `Este código pertence ao produto: <nome>` |
 | GTIN inexistente/erro | Sem mensagem de bloqueio |
+
+## Veja Também
+
+- [Error Handling](/arquitetura/error-handling/) — Tratamento centralizado de erros, incluindo erros de autenticação
+- [API e Endpoints](/arquitetura/api-endpoints/) — Endpoints de autenticação (`/auth/login`, `/auth/refresh`)
 - [Hooks Customizados](/modulos/hooks/) — Outros hooks do sistema

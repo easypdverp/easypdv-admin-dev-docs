@@ -1,3 +1,10 @@
+## [1.3.2](https://github.com/Despensinha/easypdv-admin-dev-docs/compare/v1.3.1...v1.3.2) (2026-04-17)
+
+
+### Bug Fixes
+
+* **ai:** prevent changelog-style phrasing in generated docs ([a28bbf8](https://github.com/Despensinha/easypdv-admin-dev-docs/commit/a28bbf8001c8a847f564827fc9ad836d2a072747))
+
 ## [1.3.1](https://github.com/Despensinha/easypdv-admin-dev-docs/compare/v1.3.0...v1.3.1) (2026-04-16)
 
 
