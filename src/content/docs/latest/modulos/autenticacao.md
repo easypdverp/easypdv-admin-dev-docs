@@ -5,27 +5,37 @@ sidebar:
   order: 1
 ---
 
-A autenticação usa **JWT** com **refresh token**. O estado do usuário autenticado é mantido no `AuthContext`.
+A autenticação usa **JWT** com `accessToken` e `refreshToken`. O estado do usuário autenticado fica centralizado no `AuthContext`, e os interceptors do Axios tratam a inclusão automática do token nas requisições e a renovação do `accessToken` quando a API retorna `401`.
 
 ## Arquivos Principais
 
 | Arquivo | Responsabilidade |
 |---------|-----------------|
 | `src/app/modules/auth/core/Auth.tsx` | Criação e exportação do `AuthContext`, provider e hook de consumo |
-| `src/app/modules/auth/core/AuthHelpers.ts` | Leitura e escrita dos tokens no storage |
-| `src/api/axios.ts` | Interceptors de auth, injeção de token e renovação de sessão |
+| `src/app/modules/auth/core/AuthHelpers.ts` | Leitura, escrita e remoção dos tokens no storage |
+| `src/api/axios.ts` | Interceptors de autenticação, refresh token e retry de requisições |
+| `src/app/modules/auth/index.ts` | Exportação do hook `useAuth` e do contexto de autenticação |
 
 ## Fluxo de Login
 
-1. Usuário submete credenciais → `POST /auth/login`
-2. A API retorna `accessToken` e `refreshToken`
-3. Os tokens são armazenados via `AuthHelpers.saveTokens()`
-4. `AuthContext` atualiza `currentUser` com os dados decodificados do JWT
-5. O estado de autenticação fica disponível para componentes e páginas via `useAuth`
+1. O usuário submete as credenciais no formulário de autenticação.
+2. A aplicação executa `POST /auth/login`.
+3. A API retorna `accessToken`, `refreshToken` e os dados do usuário autenticado.
+4. `AuthHelpers.saveTokens()` persiste os tokens no storage.
+5. O `AuthContext` decodifica o `accessToken` e atualiza `currentUser`.
+6. Os componentes consumem os dados via `useAuth()`.
+
+### Campos do payload de autenticação
+
+| Campo | Tipo | Descrição |
+|-------|------|-------------|
+| `accessToken` | `string` | Token usado nas requisições autenticadas |
+| `refreshToken` | `string` | Token usado na renovação da sessão |
+| `currentUser` | objeto | Dados derivados do JWT e expostos pelo contexto |
 
 ## Interceptors Axios
 
-O interceptor em `src/api/axios.ts` injeta o `accessToken` em cada requisição autenticada:
+O interceptor de requisição em `src/api/axios.ts` injeta o `accessToken` no header `Authorization` de todas as chamadas autenticadas.
 
 ```ts
 axiosInstance.interceptors.request.use((config) => {
@@ -35,7 +45,15 @@ axiosInstance.interceptors.request.use((config) => {
 });
 ```
 
-Quando a API retorna `401`, o interceptor de resposta tenta renovar o token com o `refreshToken` e repetir a requisição original:
+### Responsabilidade do interceptor de requisição
+
+| Etapa | Comportamento |
+|-------|---------------|
+| Leitura do token | Recupera o `accessToken` do storage via `AuthHelpers.getAccessToken()` |
+| Montagem do header | Inclui `Authorization: Bearer <token>` |
+| Encaminhamento | Mantém a requisição original sem alterar o restante do `config` |
+
+Quando a API responde com `401`, o interceptor de resposta tenta renovar o token usando o `refreshToken` e reexecuta a requisição original.
 
 ```ts
 axiosInstance.interceptors.response.use(
@@ -52,19 +70,57 @@ axiosInstance.interceptors.response.use(
 );
 ```
 
+### Responsabilidade do interceptor de resposta
+
+| Etapa | Comportamento |
+|-------|---------------|
+| Detecção do `401` | Identifica falha de autenticação na resposta da API |
+| Controle de repetição | Usa `error.config._retry` para evitar loop infinito |
+| Renovação | Chama `refreshAccessToken()` para obter novo `accessToken` |
+| Retry | Reenvia a requisição original com o novo token |
+
+## Refresh Token
+
+O fluxo de renovação usa o endpoint de refresh da API e mantém a sessão sem intervenção do usuário enquanto o `refreshToken` permanece válido.
+
+### Endpoint utilizado
+
+| Endpoint | Finalidade |
+|----------|------------|
+| `POST /auth/refresh` | Gera um novo `accessToken` a partir do `refreshToken` |
+
 ### Fluxo de renovação
 
-| Etapa | Descrição |
-|------|-------------|
-| 1 | Uma requisição autenticada retorna `401` |
-| 2 | O interceptor marca a requisição com `_retry` |
-| 3 | `refreshAccessToken()` consulta o endpoint de refresh |
-| 4 | Um novo `accessToken` é retornado e reaplicado no `Authorization` |
-| 5 | A requisição original é reenviada com o novo token |
+1. A requisição retorna `401`.
+2. O interceptor de resposta executa `refreshAccessToken()`.
+3. O novo `accessToken` é salvo no storage.
+4. O header `Authorization` da requisição original é atualizado.
+5. A requisição é executada novamente.
+
+## AuthContext
+
+O `AuthContext` é exportado a partir de `src/app/modules/auth/core/Auth.tsx`, o que permite que outros módulos acessem o contexto autenticado diretamente quando necessário. O provider mantém a estrutura de dados da sessão e expõe as ações de autenticação para a árvore de componentes.
+
+| Propriedade | Tipo | Responsabilidade |
+|-------------|------|-----------------|
+| `currentUser` | objeto autenticado | Dados do usuário derivados do JWT |
+| `isAuthorized` | boolean | Indica se existe sessão válida |
+| `saveAuth` | função | Persiste tokens e estado autenticado |
+| `logout` | função | Remove sessão e limpa credenciais |
+
+
+### Fluxo de dados
+
+| Origem | Destino | Papel |
+|--------|---------|------|
+| Resposta do login | `AuthHelpers` | Persistência dos tokens |
+| `accessToken` | `AuthContext` | Decodificação dos dados do usuário |
+| `AuthContext` | componentes | Distribuição de `currentUser` e ações de sessão |
+| `logout()` | storage + contexto | Limpeza dos tokens e do estado autenticado |
 
 ## useAuth Hook
 
-O módulo de autenticação exporta o hook `useAuth` a partir do mesmo arquivo que declara o contexto. Ele consome o `AuthContext` via `useContext(AuthContext)` e disponibiliza o estado autenticado para os componentes da aplicação.
+O hook `useAuth` é exportado pelo mesmo arquivo que declara o contexto, consome `AuthContext` via `useContext(AuthContext)` e entrega os dados e ações da sessão aos componentes.
 
 ```tsx
 import { useAuth } from '../modules/auth';
@@ -82,17 +138,14 @@ function MyComponent() {
 | `currentUser` | objeto | Representa o usuário autenticado disponível no contexto |
 | `logout` | função | Finaliza a sessão e limpa os dados de autenticação |
 
-### AuthContext
+### Uso típico
 
-O `AuthContext` é exportado a partir de `src/app/modules/auth/core/Auth.tsx`, o que permite que outros módulos acessem o contexto autenticado diretamente quando necessário. O provider mantém a estrutura de dados da sessão e expõe as ações de autenticação para a árvore de componentes.
-
-| Propriedade | Tipo | Responsabilidade |
-|-------------|------|-----------------|
-| `currentUser` | objeto autenticado | Dados do usuário derivados do JWT |
-| `isAuthorized` | boolean | Indica se existe sessão válida |
-| `saveAuth` | função | Persiste tokens e estado autenticado |
-| `logout` | função | Remove sessão e limpa credenciais |
-
+| Valor | Uso |
+|-------|-----|
+| `currentUser.name` | Exibição do nome do usuário na interface |
+| `currentUser.role` | Controle de permissões e visibilidade de componentes |
+| `logout()` | Encerramento da sessão |
+| `isAuthorized` | Proteção de rotas e renderização condicional |
 
 ## Permissões de Acesso
 
@@ -315,6 +368,19 @@ Se a API retorna um produto, o formulário exibe a mensagem:
 |----------|-----------|
 | GTIN localizado | `Este código pertence ao produto: <nome>` |
 | GTIN inexistente/erro | Sem mensagem de bloqueio |
+
+## Logout
+
+O logout limpa o estado autenticado e remove os tokens armazenados, encerrando a sessão local.
+
+### Efeitos do logout
+
+| Ação | Resultado |
+|------|-----------|
+| Remoção de `accessToken` | Interceptores deixam de enviar autenticação |
+| Remoção de `refreshToken` | Renovação de sessão fica indisponível |
+| Limpeza do `currentUser` | Interface volta ao estado anônimo |
+| Redirecionamento | Usuário retorna para a tela de acesso |
 
 ## Veja Também
 
