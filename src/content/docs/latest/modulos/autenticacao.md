@@ -33,7 +33,7 @@ A autenticação usa **JWT** com `accessToken` e `refreshToken`. O estado do usu
 | `refreshToken` | `string` | Token usado na renovação da sessão |
 | `currentUser` | objeto | Dados derivados do JWT e expostos pelo contexto |
 
-## Interceptors Axios
+## Fluxo de Renovação de Token
 
 O interceptor de requisição em `src/api/axios.ts` injeta o `accessToken` no header `Authorization` de todas as chamadas autenticadas.
 
@@ -96,6 +96,16 @@ O fluxo de renovação usa o endpoint de refresh da API e mantém a sessão sem 
 3. O novo `accessToken` é salvo no storage.
 4. O header `Authorization` da requisição original é atualizado.
 5. A requisição é executada novamente.
+
+## AuthHelpers
+
+O módulo `AuthHelpers` encapsula a persistência do objeto `AuthModel` no storage da sessão.
+
+| Método | Responsabilidade |
+|--------|-----------------|
+| `getAuth()` | Lê a autenticação persistida |
+| `setAuth(auth)` | Persiste a autenticação e emite `AUTH_EVENT_KEY` |
+| `removeAuth()` | Remove a autenticação e emite `AUTH_EVENT_KEY` |
 
 ## AuthContext
 
