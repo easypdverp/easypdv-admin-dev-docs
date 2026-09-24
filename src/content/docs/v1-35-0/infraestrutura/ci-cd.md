@@ -68,7 +68,7 @@ jobs:
 ## dispatch-docs.yml
 
 **Arquivo:** `.github/workflows/dispatch-docs.yml`  
-**Trigger:** `workflow_dispatch` (execução manual com input opcional de versão)
+**Trigger:** `workflow_dispatch` (execução manual com input opcional de versão)  
 **Concurrency:** `dispatch-docs` (sem cancelamento)
 
 **O que faz:**
@@ -186,7 +186,7 @@ jobs:
    - faz merge via squash
    - sincroniza a branch de origem com `develop` após o merge
 
-**Secrets/Tokens:** `GITHUB_TOKEN` via `github.token`
+**Secrets/Tokens:** `GITHUB_TOKEN` (via `github.token`)
 
 ```yaml
 # .github/workflows/pr-validation-auto-approve.yml
@@ -326,7 +326,7 @@ jobs:
 3. Atualiza a branch de origem do PR para apontar para o mesmo SHA de `develop` com force update
 4. Mantém a branch de trabalho sincronizada para evitar conflitos futuros
 
-**Secrets/Tokens:** `GITHUB_TOKEN` via `github.token`
+**Secrets/Tokens:** `GITHUB_TOKEN` (via `github.token`)
 
 ```yaml
 # .github/workflows/sync-work-branch-direct.yml
@@ -401,76 +401,6 @@ pr-validation-auto-approve.yml
     +---> Squash merge automático
     +---> Sincroniza branch de origem com develop
 ```
-
-## Interface de assinatura
-
-A pagina de assinatura concentra os dados da assinatura em blocos responsivos, organizados com grid Bootstrap e cards de informacao. O componente principal `SubscriptionDetailsTab` renderiza um conjunto de metricas e listas a partir de `systemModulesData` e `systemUsageData`, com comportamento responsivo definido diretamente nas classes utilitarias.
-
-### Estrutura de responsividade
-
-A composição de colunas usa classes como `col-12`, `col-sm-6`, `col-md-4` e `col-xl`, permitindo que os blocos ocupem diferentes larguras conforme o breakpoint do layout.
-
-| Regiao da interface | Classe de coluna | Comportamento |
-|---------------------|------------------|---------------|
-| Lista de modulos do sistema | `col-12 col-sm-6 col-xl-3` | 1 coluna no mobile, 2 colunas em telas pequenas, 4 colunas em telas extra grandes |
-| Cards de resumo operacional | `col-6 col-md-4 col-xl` | 2 colunas no mobile, 3 colunas em telas medias e distribuicao flexivel em telas extra grandes |
-| Cards de indicadores complementares | `col-6 col-md-4 col-xl` | Mesma regra de largura, preservando alinhamento em grade |
-| Cartoes de status e disponibilidade | `col-6 col-md-4 col-xl` | Garante encaixe consistente no bloco final da tela |
-
-### Dados exibidos por `SubscriptionDetailsTab`
-
-| Fonte de dados | Propriedade | Uso na interface |
-|----------------|------------|------------------|
-| `systemModulesData` | `modules` | Lista os modulos disponiveis da assinatura, renderizada com `map(module => ...)` |
-| `module` | `name` | Usado como `key` de cada item da lista |
-| `systemUsageData` | `system_availability_percentage` | Exibe o percentual de disponibilidade do sistema |
-| `systemUsageData` | demais campos consumidos pelo componente | Alimentam os cards de resumo, contadores e indicadores visuais |
-
-### Componente e fluxo de renderizacao
-
-O componente `SubscriptionDetailsTab` segue um fluxo direto de leitura dos dados e composicao visual:
-
-1. Recebe os dados de assinatura e uso do sistema pelas estruturas de estado/consulta do modulo
-2. Renderiza a grade de modulos quando `systemModulesData.modules.length > 0`
-3. Para cada modulo, monta um card com:
-   - nome do modulo
-   - informacoes de apoio em layout flexivel
-   - container com altura total `h-100`
-4. Renderiza os cards de indicadores com:
-   - icones da familia `ki-outline`
-   - valores agregados
-   - textos descritivos centralizados
-5. Exibe disponibilidade do sistema com o valor de `systemUsageData?.system_availability_percentage || 0`
-
-### Classes e componentes de layout
-
-| Elemento | Classe principal | Finalidade |
-|----------|------------------|-----------|
-| Wrapper da lista de modulos | `row g-4` | Define grid com espacamento entre itens |
-| Card de modulo | `d-flex flex-column gap-2 p-4 bg-light rounded h-100` | Estrutura vertical com fundo claro e altura uniforme |
-| Cabeçalho do card | `d-flex justify-content-between align-items-center` | Alinha titulo e metadados do modulo |
-| Bloco de metricas | `d-flex flex-column align-items-center justify-content-center` | Centraliza informacoes numericas e textos |
-| Bloco de indicadores | `d-flex flex-column gap-4` | Organiza cards empilhados dentro da coluna |
-| Card interno de status | `p-4 bg-light rounded flex-grow-1` | Mantem o bloco preenchendo toda a altura disponivel |
-
-### Dependencias visuais e comportamento
-
-| Recurso | Identificador | Papel no componente |
-|---------|--------------|--------------------|
-| Grid responsivo | classes Bootstrap `row`, `col-*`, `g-4` | Responsividade e alinhamento dos blocos |
-| Tipografia | classes `fs-5`, `fs-7`, `fs-2x`, `fw-bold` | Hierarquia visual dos valores |
-| Iconografia | `ki-outline ki-chart-line-up-2`, `ki-outline ki-notification-on`, `ki-outline ki-screen` | Representa metrica, alerta e tela/status |
-| Cores | `text-gray-600`, `text-gray-800`, `text-gray-300` | Diferencia dados primarios e secundarios |
-| Estado vazio | condicional `systemModulesData?.modules && systemModulesData.modules.length > 0` | Evita renderizacao da lista quando nao ha modulos |
-
-### Exemplo de estrutura renderizada
-
-| Area | Conteudo esperado |
-|------|-------------------|
-| Lista de modulos | Cards em grade, com 1, 2 ou 4 colunas dependendo do viewport |
-| Indicadores centrais | Cards com metricas numericas e subtitulos centralizados |
-| Disponibilidade do sistema | Percentual exibido em destaque com valor derivado do objeto de uso |
-| Informacoes complementares | Blocos com textos auxiliares e hierarquia visual padronizada |
 
 ## Integração com React Query na aplicação
 
@@ -613,3 +543,50 @@ O código da aplicação segue alguns padrões consistentes no uso de `@tanstack
 | `StepperComponent` | Navegação da etapa de setup | `SetupPage` |
 | `FormikProvider` / `useFormik` | Gerência de formulário | `SubscriptionBillingTab`, `SetupPage` |
 | `useQuery` / `useMutation` | Acesso assíncrono a APIs | Páginas de setup e assinatura |
+
+## Fluxo de Release
+
+O pipeline completo de release segue esta sequência:
+
+```
+PR merged em master
+    |
+    v
+release.yml (semantic-release)
+    |
+    +---> CHANGELOG.md atualizado
+    +---> Git tag criada (ex: v1.27.1)
+    +---> GitHub Release publicada
+    |
+    v
+notify-changelog.yml (disparado pela release)
+    |
+    +---> Dispatch para repo externo de changelog
+    |
+    v
+sync-develop-direct.yml (disparado pelo release workflow)
+    |
+    +---> Merge master em develop
+    +---> Push develop atualizada
+```
+
+## Fluxo de PR
+
+O pipeline de validação de PRs segue esta sequência:
+
+```
+PR aberto/atualizado em develop
+    |
+    v
+pr-validation-auto-approve.yml
+    |
+    +---> semantic-pr.yml (valida título conventional commits)
+    +---> pr-build.yml (check-types, lint, build)
+    |
+    v (se ambos passam)
+    |
+    +---> Auto-approve do PR
+    +---> Atualiza branch se atrasada
+    +---> Squash merge automático
+    +---> Sincroniza branch de origem com develop
+```

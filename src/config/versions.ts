@@ -17,6 +17,7 @@ export const versions: Version[] = [
   { slug: 'v1-32-0', label: 'v1.32.0', isCurrent: false },
   { slug: 'v1-33-0', label: 'v1.33.0', isCurrent: false },
   { slug: 'v1-34-0', label: 'v1.34.0', isCurrent: false },
+  { slug: 'v1-35-0', label: 'v1.35.0', isCurrent: false },
 ];
 
 export const defaultVersion = 'latest';
