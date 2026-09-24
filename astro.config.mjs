@@ -41,6 +41,66 @@ export default defineConfig({
           collapsed: true,
           items: versionSidebar('v1-27-1'),
         },
+        {
+          label: 'v1-27-2',
+          collapsed: true,
+          items: versionSidebar('v1-27-2'),
+        },
+        {
+          label: 'v1-31-0',
+          collapsed: true,
+          items: versionSidebar('v1-31-0'),
+        },
+        {
+          label: 'v1-32-0',
+          collapsed: true,
+          items: versionSidebar('v1-32-0'),
+        },
+        {
+          label: 'v1-33-0',
+          collapsed: true,
+          items: versionSidebar('v1-33-0'),
+        },
+        {
+          label: 'v1-34-0',
+          collapsed: true,
+          items: versionSidebar('v1-34-0'),
+        },
+        {
+          label: 'v1-35-0',
+          collapsed: true,
+          items: versionSidebar('v1-35-0'),
+        },
+        {
+          label: 'v1-36-1',
+          collapsed: true,
+          items: versionSidebar('v1-36-1'),
+        },
+        {
+          label: 'v1-37-0',
+          collapsed: true,
+          items: versionSidebar('v1-37-0'),
+        },
+        {
+          label: 'v1-38-0',
+          collapsed: true,
+          items: versionSidebar('v1-38-0'),
+        },
+        {
+          label: 'v1-39-0',
+          collapsed: true,
+          items: versionSidebar('v1-39-0'),
+        },
+        {
+          label: 'v1-40-1',
+          collapsed: true,
+          items: versionSidebar('v1-40-1'),
+        },
+        {
+          label: 'v1-41-0',
+          collapsed: true,
+          items: versionSidebar('v1-41-0'),
+        },
         // SNAPSHOT_INSERT_ABOVE
       ],
     }),
