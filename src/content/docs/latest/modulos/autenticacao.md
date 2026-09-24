@@ -5,157 +5,102 @@ sidebar:
   order: 1
 ---
 
-A autenticação usa **JWT** com `accessToken` e `refreshToken`. O estado do usuário autenticado fica centralizado no `AuthContext`, e os interceptors do Axios tratam a inclusão automática do token nas requisições e a renovação do `accessToken` quando a API retorna `401`.
+A autenticação usa JWT com renovação de sessão. O `AuthProvider` mantém o objeto `AuthModel`, e `AuthInit` carrega os dados do usuário para o `AuthContext`. A autorização usa as permissões de `currentUser` por meio do provider CASL.
 
 ## Arquivos Principais
 
 | Arquivo | Responsabilidade |
 |---------|-----------------|
-| `src/app/modules/auth/core/Auth.tsx` | Criação e exportação do `AuthContext`, provider e hook de consumo |
-| `src/app/modules/auth/core/AuthHelpers.ts` | Leitura, escrita e remoção dos tokens no storage |
-| `src/api/axios.ts` | Interceptors de autenticação, refresh token e retry de requisições |
-| `src/app/modules/auth/index.ts` | Exportação do hook `useAuth` e do contexto de autenticação |
+| `src/app/modules/auth/core/AuthContext.ts` | Instância estável do contexto, tipos e estado inicial |
+| `src/app/modules/auth/core/Auth.tsx` | `AuthProvider`, `AuthInit`, `useAuth` e reexportação de `AuthContext` |
+| `src/app/modules/auth/core/AuthHelpers.ts` | Persistência da autenticação no storage |
+| `src/app/modules/auth/core/_requests.ts` | Login, refresh e consulta do perfil |
+| `src/api/axios.ts` | Interceptors e renovação compartilhada de tokens |
+| `src/app/casl/AbilityContext.tsx` | `AbilityProvider`, `useAbility`, `useCanAny` e `Can` |
 
 ## Fluxo de Login
 
-1. O usuário submete as credenciais no formulário de autenticação.
-2. A aplicação executa `POST /auth/login`.
-3. A API retorna `accessToken`, `refreshToken` e os dados do usuário autenticado.
-4. `AuthHelpers.saveTokens()` persiste os tokens no storage.
-5. O `AuthContext` decodifica o `accessToken` e atualiza `currentUser`.
-6. Os componentes consumem os dados via `useAuth()`.
+1. O formulário envia `username` e `password` para `POST /auth/login`.
+2. O envelope da API retorna um `AuthModel`, persistido por `saveAuth` e `AuthHelpers.setAuth`.
+3. Com `auth.token` disponível, `AuthInit` consulta `GET /account/details` por `getUserPreferencesDetails()`.
+4. A resposta `AccountDetailsDto` preenche `currentUser` por `setCurrentUser`.
+5. `AbilityProvider` deriva as permissões de `currentUser.permissions` e os componentes consomem a sessão por `useAuth()`.
 
-### Campos do payload de autenticação
+### Dados da sessão
 
-| Campo | Tipo | Descrição |
-|-------|------|-------------|
-| `accessToken` | `string` | Token usado nas requisições autenticadas |
-| `refreshToken` | `string` | Token usado na renovação da sessão |
-| `currentUser` | objeto | Dados derivados do JWT e expostos pelo contexto |
+| Campo | Tipo | Responsabilidade |
+|-------|------|-----------------|
+| `auth.token` | `string` | JWT enviado nas chamadas autenticadas |
+| `auth.refresh_token` | `string`, opcional | Credencial usada para renovar a sessão |
+| `auth.type` | `string` | Tipo de autenticação usado no header |
+| `currentUser` | `AccountDetailsDto`, opcional | Perfil obtido de `/account/details` |
 
-## Fluxo de Renovação de Token
+O perfil é carregado pela API. A leitura do claim `exp` do JWT serve à verificação de expiração do token.
 
-O interceptor de requisição em `src/api/axios.ts` injeta o `accessToken` no header `Authorization` de todas as chamadas autenticadas.
+## Interceptors e renovação
 
-```ts
-axiosInstance.interceptors.request.use((config) => {
-  const token = AuthHelpers.getAccessToken();
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
-```
-
-### Responsabilidade do interceptor de requisição
+O interceptor de requisição lê `getAuth()` e monta `Authorization` com `auth.type` e `auth.token`. O interceptor de resposta verifica o envelope `ApiResponse`; uma falha semântica com `status: 401` pode iniciar a renovação mesmo quando o HTTP é `200`.
 
 | Etapa | Comportamento |
 |-------|---------------|
-| Leitura do token | Recupera o `accessToken` do storage via `AuthHelpers.getAccessToken()` |
-| Montagem do header | Inclui `Authorization: Bearer <token>` |
-| Encaminhamento | Mantém a requisição original sem alterar o restante do `config` |
+| Detecção | `success: false`, status semântico `401` e `refresh_token` disponível |
+| Controle de repetição | `_retry` limita a repetição da requisição original |
+| Renovação | `refreshToken()` envia `refresh_token` a `POST /auth/refresh-token` |
+| Concorrência | `getRefreshedAuth()` compartilha `refreshPromise` entre chamadas simultâneas |
+| Persistência | `setAuth()` grava o novo `AuthModel` |
+| Reenvio | A requisição original recebe o novo token e é executada novamente |
+| Falha | O payload de erro HTTP é rejeitado quando disponível; nos demais casos o auth é removido e o erro é propagado |
 
-Quando a API responde com `401`, o interceptor de resposta tenta renovar o token usando o `refreshToken` e reexecuta a requisição original.
+Respostas binárias retornam dados crus. Uma resposta JSON em uma chamada de streaming é lida como `ApiResponse` para preservar o tratamento de falhas e refresh. O código completo está em [API e Endpoints](/latest/arquitetura/api-endpoints/).
 
-```ts
-axiosInstance.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    if (error.response?.status === 401 && !error.config._retry) {
-      error.config._retry = true;
-      const newToken = await refreshAccessToken();
-      error.config.headers.Authorization = `Bearer ${newToken}`;
-      return axiosInstance(error.config);
-    }
-    return Promise.reject(error);
-  }
-);
-```
+### SSE de notificações
 
-### Responsabilidade do interceptor de resposta
-
-| Etapa | Comportamento |
-|-------|---------------|
-| Detecção do `401` | Identifica falha de autenticação na resposta da API |
-| Controle de repetição | Usa `error.config._retry` para evitar loop infinito |
-| Renovação | Chama `refreshAccessToken()` para obter novo `accessToken` |
-| Retry | Reenvia a requisição original com o novo token |
-
-## Refresh Token
-
-O fluxo de renovação usa o endpoint de refresh da API e mantém a sessão sem intervenção do usuário enquanto o `refreshToken` permanece válido.
-
-### Endpoint utilizado
-
-| Endpoint | Finalidade |
-|----------|------------|
-| `POST /auth/refresh` | Gera um novo `accessToken` a partir do `refreshToken` |
-
-### Fluxo de renovação
-
-1. A requisição retorna `401`.
-2. O interceptor de resposta executa `refreshAccessToken()`.
-3. O novo `accessToken` é salvo no storage.
-4. O header `Authorization` da requisição original é atualizado.
-5. A requisição é executada novamente.
+`getFreshToken()` verifica a expiração com margem de 10 segundos e renova o token quando necessário. O módulo de notificações chama esse helper antes de abrir o `EventSource` com `?token=...`; o token enviado na URL não passa pelo interceptor de requisição do Axios.
 
 ## AuthHelpers
 
-O módulo `AuthHelpers` encapsula a persistência do objeto `AuthModel` no storage da sessão.
-
 | Método | Responsabilidade |
 |--------|-----------------|
-| `getAuth()` | Lê a autenticação persistida |
+| `getAuth()` | Lê o `AuthModel` persistido |
 | `setAuth(auth)` | Persiste a autenticação e emite `AUTH_EVENT_KEY` |
 | `removeAuth()` | Remove a autenticação e emite `AUTH_EVENT_KEY` |
 
-## AuthContext
+O provider escuta `AUTH_EVENT_KEY` para atualizar seu estado quando a persistência muda.
 
-O `AuthContext` é exportado a partir de `src/app/modules/auth/core/Auth.tsx`, o que permite que outros módulos acessem o contexto autenticado diretamente quando necessário. O provider mantém a estrutura de dados da sessão e expõe as ações de autenticação para a árvore de componentes.
+## AuthContext e useAuth
 
-| Propriedade | Tipo | Responsabilidade |
-|-------------|------|-----------------|
-| `currentUser` | objeto autenticado | Dados do usuário derivados do JWT |
-| `isAuthorized` | boolean | Indica se existe sessão válida |
-| `saveAuth` | função | Persiste tokens e estado autenticado |
-| `logout` | função | Remove sessão e limpa credenciais |
+`AuthContext.ts` concentra a instância do contexto para manter sua identidade durante HMR. `Auth.tsx` reexporta essa instância e implementa `useAuth()` com `useContext(AuthContext)`.
 
-
-### Fluxo de dados
-
-| Origem | Destino | Papel |
-|--------|---------|------|
-| Resposta do login | `AuthHelpers` | Persistência dos tokens |
-| `accessToken` | `AuthContext` | Decodificação dos dados do usuário |
-| `AuthContext` | componentes | Distribuição de `currentUser` e ações de sessão |
-| `logout()` | storage + contexto | Limpeza dos tokens e do estado autenticado |
-
-## useAuth Hook
-
-O hook `useAuth` é exportado pelo mesmo arquivo que declara o contexto, consome `AuthContext` via `useContext(AuthContext)` e entrega os dados e ações da sessão aos componentes.
+| Propriedade | Responsabilidade |
+|-------------|-----------------|
+| `auth` | Credenciais atuais ou `undefined` |
+| `saveAuth` | Atualiza estado e persistência da autenticação |
+| `currentUser` | Perfil do usuário ou `undefined` |
+| `setCurrentUser` | Atualiza o perfil carregado |
+| `logout` | Limpa autenticação, perfil e define a mensagem de erro opcional |
+| `errorMessage` | Mensagem opcional da sessão |
 
 ```tsx
-import { useAuth } from '../modules/auth';
+import { useAuth } from '@/app/modules/auth/core/Auth';
 
-function MyComponent() {
+function UserMenu() {
   const { currentUser, logout } = useAuth();
-  // currentUser.role, currentUser.name, etc.
+  return <button onClick={() => logout()}>{currentUser?.name}: Sair</button>;
 }
 ```
 
-### Contrato do hook
+`AuthInit` mantém a tela de carregamento enquanto existe token sem perfil carregado. Os componentes usam `currentUser` para identidade e a camada CASL para decidir acesso a recursos.
 
-| Propriedade | Tipo | Responsabilidade |
-|------------|------|-----------------|
-| `currentUser` | objeto | Representa o usuário autenticado disponível no contexto |
-| `logout` | função | Finaliza a sessão e limpa os dados de autenticação |
+## Controle de acesso por permissões
 
-### Uso típico
+| Componente / Hook | Responsabilidade |
+|-------------------|------------------|
+| `AbilityProtectedRoute` | Protege rotas por uma ou mais permissões |
+| `Can` | Renderiza blocos condicionais no JSX |
+| `useAbility()` | Acesso programático a `ability.can('access', permission)` |
+| `useCanAny()` | Verifica se o usuário possui qualquer permissão de um grupo |
 
-| Valor | Uso |
-|-------|-----|
-| `currentUser.name` | Exibição do nome do usuário na interface |
-| `currentUser.role` | Controle de permissões e visibilidade de componentes |
-| `logout()` | Encerramento da sessão |
-| `isAuthorized` | Proteção de rotas e renderização condicional |
+`permissionGroups.ts` reúne os grupos `DASHBOARD_*_PERMISSIONS`, `PICKLIST_PERMISSIONS`, `WAREHOUSE_TASK_PERMISSIONS` e `PURCHASE_INVOICE_READ_PERMISSIONS` usados por rotas, menus e componentes.
 
 ## Permissões de Acesso
 
@@ -179,12 +124,12 @@ O módulo de autenticação também participa do controle de acesso por permiss�
 ### Exemplos de uso
 
 #### Dashboard
-A rota `dashboard/*` é encapsulada por `AbilityProtectedRoute` com a permissão `PERMISSIONS.DASHBOARD`.
+A rota `dashboard/*` aceita as permissões do grupo `DASHBOARD_PERMISSIONS`.
 
 ```tsx
 <Route
   element={
-    <AbilityProtectedRoute permission={PERMISSIONS.DASHBOARD}>
+    <AbilityProtectedRoute permissions={DASHBOARD_PERMISSIONS}>
       <DashboardWrapper />
     </AbilityProtectedRoute>
   }
@@ -208,7 +153,7 @@ O módulo de relatórios usa permissões específicas para cada grupo de página
 ```tsx
 <Route
   element={
-    <AbilityProtectedRoute permission={PERMISSIONS.RELATORIOS_FINANCEIRO}>
+    <AbilityProtectedRoute permission={PERMISSIONS.RELATORIOS_FINANCEIRO_BALANCETE}>
       <Routes>
         ...
       </Routes>
@@ -363,7 +308,7 @@ O componente `GtinEanInput` é usado para consulta de produto por código de bar
 
 ### useGtinValidation
 
-O hook `useGtinValidation` usa `react-query` para consultar o backend por um GTIN informado.
+O hook `useGtinValidation` usa `@tanstack/react-query` para consultar o backend por um GTIN informado.
 
 | Estado/ação | Responsabilidade |
 |-------------|-----------------|
@@ -387,14 +332,14 @@ O logout limpa o estado autenticado e remove os tokens armazenados, encerrando a
 
 | Ação | Resultado |
 |------|-----------|
-| Remoção de `accessToken` | Interceptores deixam de enviar autenticação |
-| Remoção de `refreshToken` | Renovação de sessão fica indisponível |
+| Remoção de `auth.token` | Interceptores deixam de enviar autenticação |
+| Remoção de `auth.refresh_token` | Renovação de sessão fica indisponível |
 | Limpeza do `currentUser` | Interface volta ao estado anônimo |
 | Redirecionamento | Usuário retorna para a tela de acesso |
 
 ## Configuração de News na Home
 
-A Home consome a lista de notícias por meio do componente `NewsSection`, que usa `react-query` para buscar dados da API configurada em ambiente.
+A Home consome a lista de notícias por meio do componente `NewsSection`, que usa `@tanstack/react-query` para buscar dados da API configurada em ambiente.
 
 ### Arquivo principal
 
@@ -405,7 +350,7 @@ A Home consome a lista de notícias por meio do componente `NewsSection`, que us
 
 ### Fluxo de dados
 
-1. `NewsSection` executa `useQuery(['home-news'], () => getNews(), { retry: false })`
+1. `NewsSection` executa `useQuery({ queryKey: ['home-news'], queryFn: () => getNews(), retry: false })`
 2. `getNews()` lê `VITE_APP_NEWS_API_URL` via `getProjectEnvVariables()`
 3. A requisição é feita com `axios.get<NewsDto[]>(VITE_APP_NEWS_API_URL)`
 4. A resposta é normalizada com `useMemo`
@@ -509,8 +454,17 @@ A autenticação é usada em fluxos que dependem do usuário logado, como o chat
 4. `useUnifiedChat()` seleciona a origem da conversa entre IA e atendimento humano
 5. `ChatPanel` renderiza `ThreadPrimitive.Messages`, `ComposerPrimitive.Input` e `ComposerPrimitive.Send`
 
+## Permissões em telas e fluxos
+
+A autenticação também governa:
+
+- exibição de abas do dashboard por grupo de permissões;
+- acesso a telas de Preferências, Relatórios, Suprimentos, Financeiro, Notificações e Espaço do Contador/Gestor;
+- ações de formulário, como criação de marcadores, lotes, ajustes de estoque, importação de NFe e execução de operações de picklist;
+- exibição de botões e menus contextuais em tabelas e modais.
+
 ## Veja Também
 
 - [Error Handling](/arquitetura/error-handling/) — Tratamento centralizado de erros, incluindo erros de autenticação
-- [API e Endpoints](/arquitetura/api-endpoints/) — Endpoints de autenticação (`/auth/login`, `/auth/refresh`)
+- [API e Endpoints](/arquitetura/api-endpoints/) — Endpoints de autenticação (`/auth/login`, `/auth/refresh-token`)
 - [Hooks Customizados](/modulos/hooks/) — Outros hooks do sistema
