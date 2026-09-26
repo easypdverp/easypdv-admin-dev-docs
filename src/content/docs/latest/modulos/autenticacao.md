@@ -463,6 +463,55 @@ A autenticação também governa:
 - ações de formulário, como criação de marcadores, lotes, ajustes de estoque, importação de NFe e execução de operações de picklist;
 - exibição de botões e menus contextuais em tabelas e modais.
 
+### Inventário de Suprimentos
+
+Na página `SupplyInventoryProductPage`, a autenticação e a autorização definem as ações disponíveis sobre os alertas de inventário. O componente processa `ProductInventoryAlertDto` e usa `alert.action_type?.value` para decidir qual fluxo de interface é permitido.
+
+#### Componentes e responsabilidades
+
+| Arquivo | Responsabilidade |
+|---------|-----------------|
+| `src/app/pages/supply/inventory/SupplyInventoryProductPage.tsx` | Orquestra o fluxo de alertas de inventário e os modais acionados pelas ações do alerta |
+| `src/app/pages/supply/inventory/components/AlertsPanel.tsx` | Renderiza a lista de alertas e controla a liberação das ações por permissão |
+
+#### Estrutura do alerta
+
+| Campo | Tipo | Descrição |
+|-------|------|-------------|
+| `alert.type.value` | string | Tipo visual do alerta, usado para definir a variante de exibição |
+| `alert.action_type?.value` | string \| undefined | Tipo da ação executável associada ao alerta |
+| `alert.action_type?.value === 'NAVIGATE_BATCH'` | ação | Navega para o fluxo de lote |
+| `alert.action_type?.value === 'NAVIGATE_DEPOSIT'` | ação | Navega para o fluxo de depósito, com controle por permissão |
+| `alert.action_type?.value === 'CREATE_ORDER'` | ação | Abre o fluxo de criação de ordem de compra, com controle por permissão |
+
+#### Fluxo de renderização em `AlertsPanel`
+
+1. O componente percorre `alerts` com `map`.
+2. A variante visual é obtida por `ALERT_VARIANT_MAP[alert.type.value]`.
+3. A ação executável é lida por `alert.action_type?.value`.
+4. O cálculo de `canAct` verifica:
+   - `NAVIGATE_BATCH` sem exigência adicional;
+   - `NAVIGATE_DEPOSIT` com `ability.can('access', PERMISSIONS.SUPRIMENTOS_AJUSTES_DE_ESTOQUE)`;
+   - `CREATE_ORDER` com `ability.can('access', PERMISSIONS.SUPRIMENTOS_ORDEMS_DE_COMPRA)`.
+5. Quando `canAct` é verdadeiro, o alerta exibe a ação correspondente na interface.
+
+#### Fluxo de ação em `SupplyInventoryProductPage`
+
+O handler `handleAlertAction(alert: ProductInventoryAlertDto)` trata a ação executável do alerta a partir de `alert.action_type?.value`.
+
+| Ação | Comportamento |
+|------|---------------|
+| `NAVIGATE_DEPOSIT` | Define `setAddEntryInitialType('BALANCE')` e abre o modal de inclusão |
+| `NAVIGATE_BATCH` | Dispara o fluxo de navegação relacionado ao lote |
+| `CREATE_ORDER` | Encaminha para a criação de ordem de compra, conforme a regra de navegação da tela |
+
+#### Integração com permissões
+
+| Permissão | Uso |
+|-----------|-----|
+| `PERMISSIONS.SUPRIMENTOS_AJUSTES_DE_ESTOQUE` | Libera ações relacionadas a depósito e ajuste de estoque |
+| `PERMISSIONS.SUPRIMENTOS_ORDEMS_DE_COMPRA` | Libera ações relacionadas à criação de ordem de compra |
+
 ## Veja Também
 
 - [Error Handling](/arquitetura/error-handling/) — Tratamento centralizado de erros, incluindo erros de autenticação
