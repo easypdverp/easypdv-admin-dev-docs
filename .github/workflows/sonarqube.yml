@@ -12,8 +12,9 @@ concurrency:
 
 jobs:
   sonarqube:
-    # O SonarQube fica na rede local: só os runners self-hosted o alcançam.
-    runs-on: [self-hosted, linux]
+    # Repo público: runner do GitHub (os self-hosted não atendem repo público, para PR de
+    # fork não rodar na rede interna) e o SonarQube pela URL pública.
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
