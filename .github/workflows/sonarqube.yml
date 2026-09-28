@@ -1,0 +1,33 @@
+name: SonarQube
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: sonarqube-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sonarqube:
+    # Repo público: runner do GitHub (os self-hosted não atendem repo público, para PR de
+    # fork não rodar na rede interna) e o SonarQube pela URL pública.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Na PR o check vai no último commit da branch (sonar.scm.revision); sem isso o
+      # plugin decora o commit de merge, que a PR não mostra.
+      - uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=easypdverp_easypdv-admin-dev-docs
+            ${{ github.event_name == 'pull_request' && format('-Dsonar.pullrequest.key={0} -Dsonar.pullrequest.branch={1} -Dsonar.pullrequest.base={2} -Dsonar.scm.revision={3}', github.event.pull_request.number, github.head_ref, github.base_ref, github.event.pull_request.head.sha) || format('-Dsonar.branch.name={0}', github.ref_name) }}
