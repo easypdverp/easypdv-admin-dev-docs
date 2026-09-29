@@ -463,6 +463,97 @@ A autenticação também governa:
 - ações de formulário, como criação de marcadores, lotes, ajustes de estoque, importação de NFe e execução de operações de picklist;
 - exibição de botões e menus contextuais em tabelas e modais.
 
+## Fluxo de Separação de Picklist
+
+A tela de separação de picklist usa a autenticação para identificar o operador e controla a confirmação de quantidades por item em uma tarefa de separação. O estado da página mantém quantidades não confirmadas no cliente até o envio explícito da linha selecionada.
+
+### Arquivos Principais
+
+| Arquivo | Responsabilidade |
+|---------|-----------------|
+| `src/app/pages/supply/picklist/PicklistSeparationPage.tsx` | Página de separação de picklist, tabela e ações por linha |
+| `src/app/pages/supply/picklist/components/QuantityInput.tsx` | Campo numérico usado para ajustar quantidades |
+| `src/app/pages/supply/picklist/core/_utils.ts` | Funções utilitárias para cálculo e limpeza de quantidades exibidas |
+| `src/app/pages/supply/picklist/core/_requests.ts` | Requisições de detalhe, histórico e edição de itens |
+
+### Estado Local da Página
+
+| Estado | Tipo | Responsabilidade |
+|--------|------|-----------------|
+| `unconfirmedQuantities` | `Record<string, number>` | Quantidades ajustadas no cliente e ainda não confirmadas |
+| `lastFocusedRow` | `string \| null` | Identificador da última linha com foco |
+| `mutatingItemId` | `string \| null` | Identificador do item em envio para a API |
+| `isFinishSeparateModalVisible` | `boolean` | Controle do modal de encerramento da separação |
+
+### Funções Utilitárias
+
+| Função | Responsabilidade |
+|--------|-----------------|
+| `getDefaultQuantity(item)` | Calcula a quantidade base exibida para um item da separação |
+| `getDisplayedQuantity(item, unconfirmedQuantities)` | Retorna a quantidade exibida considerando o estado local |
+| `discardSavedQuantities(prev, items)` | Remove do estado local os itens já confirmados na origem |
+
+### Fluxo de Dados da Tabela
+
+1. `useQuery` carrega os detalhes da tarefa com `getTaskSeparationDetails`.
+2. `handleDataChange` recebe a lista de itens da tarefa e limpa quantidades já confirmadas no estado local.
+3. A coluna de quantidade usa `getDisplayedQuantity(row.original, unconfirmedQuantities)` para exibir o valor em edição.
+4. `QuantityInput` atualiza `unconfirmedQuantities` somente quando a interação parte da digitação do usuário.
+5. Um badge `Não confirmado` aparece quando a quantidade exibida difere da quantidade base do item.
+6. O botão de confirmação envia a linha com a quantidade exibida no momento da ação.
+
+### Coluna de Quantidade
+
+O campo de quantidade é renderizado em um bloco vertical com o input e um indicador visual de confirmação pendente.
+
+| Elemento | Responsabilidade |
+|----------|-----------------|
+| `QuantityInput` | Permite incremento, decremento e digitação livre |
+| Badge `Não confirmado` | Indica divergência entre o valor exibido e a base da tarefa |
+
+### Coluna de Ação
+
+A ação de separar usa a quantidade exibida no momento do clique.
+
+| Condição | Comportamento |
+|----------|---------------|
+| `item.completed === false` | Exibe botão de confirmação |
+| `quantity !== getDefaultQuantity(item)` | Exibe botão de confirmação |
+| `separateItemMutation.isPending` | Mostra estado de carregamento no botão da linha ativa |
+
+### `QuantityInput`
+
+O componente `QuantityInput` encapsula o campo numérico com botões de incremento e decremento e usa `react-number-format` para leitura formatada do valor.
+
+| Prop | Tipo | Responsabilidade |
+|------|------|-----------------|
+| `quantity` | `number` | Valor exibido no input |
+| `onChange` | função | Recebe o valor numérico digitado |
+| `onIncrement` | função | Incrementa a quantidade |
+| `onDecrement` | função | Decrementa a quantidade |
+| `onFocus` | função | Registra a linha focada |
+| `inputRef` | `ref` | Acesso direto ao elemento HTML do input |
+
+#### Comportamento de Entrada
+
+| Regra | Descrição |
+|-------|-------------|
+| Digitação | Atualiza a quantidade somente quando o evento é disparado por interação do usuário |
+| Integração com `NumericFormat` | `onValueChange` lê `event` para evitar propagação de mudanças originadas por atualização de prop |
+| Seleção ao focar | O componente mantém o foco operacional da linha durante a edição |
+
+### Integração com a tarefa
+
+A página de separação usa `editSeparationTaskItem` para enviar o item com a quantidade exibida no momento da confirmação. O fluxo preserva o estado visual do usuário até que a linha seja submetida para a API.
+
+### Estrutura da quantidade exibida
+
+| Origem | Uso |
+|--------|-----|
+| Quantidade base da tarefa | Referência inicial para exibição |
+| `unconfirmedQuantities` | Sobrescreve o valor mostrado no campo enquanto o operador edita |
+| Quantidade enviada | Valor presente em `quantity` no item submetido |
+
 ## Veja Também
 
 - [Error Handling](/arquitetura/error-handling/) — Tratamento centralizado de erros, incluindo erros de autenticação
