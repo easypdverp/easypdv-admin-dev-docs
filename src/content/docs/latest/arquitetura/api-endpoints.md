@@ -5,7 +5,7 @@ sidebar:
   order: 5
 ---
 
-O Despensinha ERP utiliza uma camada de API centralizada baseada no **axios**, com wrappers tipados que garantem respostas consistentes via `ApiResponse<T>`. Toda comunicação com o backend segue um padrão uniforme: uma instância de axios configurada com interceptors de autenticação e tratamento de erros, e arquivos de endpoints organizados por domínio que exportam objetos constantes com paths estáticos e funções para paths dinâmicos.
+O Despensinha ERP utiliza uma camada de API centralizada baseada no **axios**, com wrappers tipados que garantem respostas consistentes via `ApiResponse<T>`. Toda comunicação com o backend segue um padrão uniforme: uma instância de axios configurada com interceptors de autenticação e tratamento de erros, e arquivos de endpoints organizados por domínio que exportam objetos constantes com paths estáticos e funções para paths dinâmicos. Os recursos da API que o admin ainda não consome estão em [API Backend](/arquitetura/api-backend/).
 
 A camada também trata respostas binárias e fluxos de streaming de forma diferenciada, permitindo que requisições com `responseType` `blob`, `arraybuffer` ou `stream` retornem dados crus sem validação do envelope `ApiResponse`.
 
