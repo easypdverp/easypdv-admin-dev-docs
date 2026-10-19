@@ -5,25 +5,26 @@ sidebar:
   order: 1
 ---
 
-O Despensinha ERP utiliza **GitHub Actions** para CI/CD, com 8 workflows que cobrem release automático, validação de PRs, sincronização de branches e dispatch de documentação.
+O Despensinha ERP utiliza **GitHub Actions** para CI/CD, com 9 workflows que cobrem release automático, validação de PRs, análise estática e de vulnerabilidades, sincronização de branches, auditoria de push direto e dispatch de documentação.
 
 ## Visão Geral
 
 | Workflow | Arquivo | Trigger | Propósito |
 |----------|---------|---------|-----------|
-| Release | `release.yml` | Push em `master` | Semantic-release (changelog, git tag, GitHub release) |
-| Dispatch Docs | `dispatch-docs.yml` | `workflow_dispatch` (manual) | Envia versão para ambos repositórios de docs |
-| PR Build | `pr-build.yml` | `workflow_call` | Check reutilizável de build (types, lint, build) |
-| PR Auto-approve | `pr-validation-auto-approve.yml` | PR em `develop` | Roda semantic PR + build, aprova e faz merge |
-| Semantic PR | `semantic-pr.yml` | `workflow_call` | Valida título do PR (conventional commits) |
+| Release | `release.yml` | Push em `master` | Semantic-release (changelog, git tag, GitHub release) e dispatch da versão nova para a documentação |
+| Dispatch Docs | `dispatch-docs.yml` | `workflow_dispatch` (manual, ou disparado pelo `release.yml`) | Envia a versão (e a tag anterior) para os repositórios de documentação do usuário e dev |
 | Notify Changelog | `notify-changelog.yml` | Release publicada | Dispatch para repositório externo de changelog |
-| Sync Develop | `sync-develop-direct.yml` | Após release workflow | Sincroniza `develop` com `master` após release |
-| Sync Branch | `sync-work-branch-direct.yml` | PR merged em `develop` | Sincroniza branch de origem com `develop` |
+| PR Validation | `pr-validation.yml` | PR em `develop` | Valida o título (conventional commits) e, em paralelo, roda ESLint, `tsc` e Vitest, com um único build por push |
+| SonarQube | `sonarqube.yml` | PR e push em `develop`, `workflow_dispatch` | Análise estática do SonarQube, restrita à `develop` |
+| Trivy - develop | `trivy-develop.yml` | Push em `develop`, `workflow_dispatch` | Varredura de vulnerabilidades na imagem Docker, via workflow reutilizável do `easypdv-scripts` |
+| Sync Develop | `sync-develop-direct.yml` | Após o `release.yml` concluir em `master` | Sincroniza `develop` com `master`, empurrando com uma chave de deploy |
+| Sync Branch | `sync-work-branch-direct.yml` | PR merged em `develop` | Atualiza a branch de origem do PR para o mesmo SHA de `develop` |
+| Auditoria de push direto | `direct-push-audit.yml` | Push em `main`/`master` | Abre ou comenta uma issue quando o commit chega sem PR associado |
 
 ## release.yml
 
 **Arquivo:** `.github/workflows/release.yml`  
-**Trigger:** Push em `master` (ignora commits com `[skip ci]`)  
+**Trigger:** Push em `master` (ignora commits com `[skip ci]`, para não entrar em loop com o commit do próprio semantic-release)  
 **Concurrency:** `release-${{ github.ref }}` (sem cancelamento)
 
 **O que faz:**
@@ -33,6 +34,7 @@ O Despensinha ERP utiliza **GitHub Actions** para CI/CD, com 8 workflows que cob
 3. Executa semantic-release via `cycjimmy/semantic-release-action@v4`
 4. Usa os plugins `conventional-changelog-conventionalcommits`, `@semantic-release/changelog` e `@semantic-release/git`
 5. Gera automaticamente `CHANGELOG.md`, git tag e GitHub release
+6. Quando uma release nova é publicada, dispara o `dispatch-docs.yml` com a versão nova
 
 **Secrets/Tokens:** `GITHUB_TOKEN`
 
@@ -40,21 +42,22 @@ O Despensinha ERP utiliza **GitHub Actions** para CI/CD, com 8 workflows que cob
 # .github/workflows/release.yml
 on:
   push:
-    branches: [ master ]
+    branches: [master]
 
 jobs:
   release:
     if: contains(github.event.head_commit.message, '[skip ci]') == false
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux]
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Config git author
+      - name: Config git author (para @semantic-release/git)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
       - name: Semantic Release
+        id: release
         uses: cycjimmy/semantic-release-action@v4
         with:
           extra_plugins: |
@@ -63,22 +66,29 @@ jobs:
             @semantic-release/git
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Dispatch docs version update
+        if: steps.release.outputs.new_release_published == 'true'
+        run: gh workflow run dispatch-docs.yml -f version="${{ steps.release.outputs.new_release_version }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ## dispatch-docs.yml
 
 **Arquivo:** `.github/workflows/dispatch-docs.yml`  
-**Trigger:** `workflow_dispatch` (execução manual com input opcional de versão)
+**Trigger:** `workflow_dispatch` (execução manual, com input opcional de versão, ou disparado pelo `release.yml`)  
 **Concurrency:** `dispatch-docs` (sem cancelamento)
 
 **O que faz:**
 
-1. Checkout com `sparse-checkout` apenas do `package.json`
+1. Checkout com `fetch-depth: 0`
 2. Valida se `DISPATCH_TOKEN` está configurado como secret
 3. Detecta a versão: usa o input manual quando fornecido, caso contrário lê do `package.json`
-4. Envia `repository_dispatch` para o repositório de docs do usuário (`despensinha-erp-docs`)
-5. Envia `repository_dispatch` para o repositório de docs dev (`despensinha-erp-dev-docs`)
-6. Gera resumo no step summary com a versão e os repositórios notificados
+4. Detecta a tag anterior, para informar no payload de onde a versão evoluiu
+5. Envia `repository_dispatch` para o repositório de docs do usuário (`easypdv-admin-docs`)
+6. Envia `repository_dispatch` para o repositório de docs dev (`easypdv-admin-dev-docs`)
+7. Gera resumo no step summary com a versão, a tag anterior e os repositórios notificados
 
 **Secrets/Tokens:** `DISPATCH_TOKEN` (PAT com scope `repo` para cross-repo dispatch)
 
@@ -90,154 +100,28 @@ on:
       version:
         type: string
         required: false
-        description: "Versao do ERP (deixe vazio para usar package.json)"
 
 jobs:
   dispatch:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux]
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: package.json
-          sparse-checkout-cone-mode: false
-
-      - name: Validar DISPATCH_TOKEN
-        run: |
-          if [ -z "${{ secrets.DISPATCH_TOKEN }}" ]; then
-            echo "::error::DISPATCH_TOKEN nao configurado."
-            exit 1
-          fi
-
-      - name: Detectar versao
-        id: version
-        run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            VERSION="${{ inputs.version }}"
-          else
-            VERSION=$(jq -r '.version' package.json)
-          fi
-          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+          fetch-depth: 0
 
       - name: Dispatch para docs usuario
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.DISPATCH_TOKEN }}
-          repository: Despensinha/despensinha-erp-docs
+          repository: easypdverp/easypdv-admin-docs
           event-type: docs-version-update
-          client-payload: '{"app_version": "${{ steps.version.outputs.value }}"}'
 
       - name: Dispatch para docs dev
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.DISPATCH_TOKEN }}
-          repository: Despensinha/despensinha-erp-dev-docs
+          repository: easypdverp/easypdv-admin-dev-docs
           event-type: docs-version-update
-          client-payload: '{"app_version": "${{ steps.version.outputs.value }}"}'
-```
-
-## pr-build.yml
-
-**Arquivo:** `.github/workflows/pr-build.yml`  
-**Trigger:** `workflow_call` (reutilizável, chamado por outros workflows)
-
-**O que faz:**
-
-1. Checkout do código
-2. Configura Node.js 18
-3. Instala dependências com `npm install`
-4. Verifica tipos com `npm run check-types`
-5. Executa o linter com `npm run lint`
-6. Executa o build com `npm run build`
-
-**Secrets/Tokens:** nenhum, além do `GITHUB_TOKEN` implícito da execução
-
-```yaml
-# .github/workflows/pr-build.yml
-on:
-  workflow_call:
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-      - run: npm install
-      - run: npm run check-types
-      - run: npm run lint
-      - run: npm run build
-```
-
-## pr-validation-auto-approve.yml
-
-**Arquivo:** `.github/workflows/pr-validation-auto-approve.yml`  
-**Trigger:** Pull request em `develop` (`opened`, `synchronize`, `reopened`, `ready_for_review`)
-
-**O que faz:**
-
-1. Chama `semantic-pr.yml` para validar o título do PR no padrão conventional commits
-2. Chama `pr-build.yml` para o check de build
-3. Se ambos passam:
-   - ignora PRs draft e PRs vindos de forks
-   - aprova o PR automaticamente
-   - atualiza a branch quando estiver defasada em relação à base
-   - faz merge via squash
-   - sincroniza a branch de origem com `develop` após o merge
-
-**Secrets/Tokens:** `GITHUB_TOKEN` via `github.token`
-
-```yaml
-# .github/workflows/pr-validation-auto-approve.yml
-on:
-  pull_request:
-    branches: [ develop ]
-    types: [opened, synchronize, reopened, ready_for_review]
-
-jobs:
-  job1:
-    uses: ./.github/workflows/semantic-pr.yml
-  job2:
-    uses: ./.github/workflows/pr-build.yml
-  job3:
-    runs-on: ubuntu-latest
-    needs: [job1, job2]
-    if: success()
-    steps:
-      - name: Approve and try to merge
-        uses: actions/github-script@v7
-        with:
-          script: |
-            // Aprova PR, atualiza branch se necessario, merge via squash
-            // Sincroniza branch de origem com develop apos merge
-```
-
-## semantic-pr.yml
-
-**Arquivo:** `.github/workflows/semantic-pr.yml`  
-**Trigger:** `workflow_call` (reutilizável, chamado por `pr-validation-auto-approve.yml`)
-
-**O que faz:**
-
-1. Valida se o título do PR segue a convenção de conventional commits
-2. Usa `amannn/action-semantic-pull-request@v5`
-3. Aceita títulos como `feat: ...`, `fix: ...` e `chore: ...`
-
-**Secrets/Tokens:** `GITHUB_TOKEN`
-
-```yaml
-# .github/workflows/semantic-pr.yml
-on:
-  workflow_call:
-
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: amannn/action-semantic-pull-request@v5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 ## notify-changelog.yml
@@ -260,15 +144,149 @@ on:
 
 jobs:
   notify:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux]
     steps:
-      - name: Dispatch changelog update
-        uses: peter-evans/repository-dispatch@v3
+      - uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.CHANGELOG_PAT }}
           repository: seu-org/changelog-publico
           event-type: release-published
           client-payload: '{"repo": "${{ github.repository }}", "version": "${{ github.event.release.tag_name }}"}'
+```
+
+## pr-validation.yml
+
+**Arquivo:** `.github/workflows/pr-validation.yml`  
+**Trigger:** PR em `develop` (`opened`, `edited`, `synchronize`, `reopened`, `ready_for_review`)
+
+**O que faz:**
+
+1. `semantic-title`: valida o título do PR no padrão conventional commits (`amannn/action-semantic-pull-request@v5`)
+2. `build`: roda em qualquer evento que não seja só edição de título/descrição (`if: github.event.action != 'edited'`), com concurrency por número do PR, cancelando o build anterior
+3. Em paralelo: `npm run eslint`, `npm run check-types` (`tsc`) e `npm run test:run` (Vitest, silenciando o console dos testes que passam)
+4. O job falha se qualquer um dos três reprovar; o ESLint também reprova com uma supressão órfã em `eslint-suppressions.json`
+5. Com os três passando, roda o `npm run build`
+
+Lint, tipos, testes e build rodam direto neste workflow, sem job de build reutilizável separado ou gate de qualidade próprio.
+
+**Secrets/Tokens:** `GITHUB_TOKEN`
+
+```yaml
+# .github/workflows/pr-validation.yml
+on:
+  pull_request:
+    branches: [develop]
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+jobs:
+  semantic-title:
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build:
+    if: github.event.action != 'edited'
+    concurrency:
+      group: pr-build-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci --no-audit --no-fund
+      - name: Lint + type check + tests (parallel)
+        run: |
+          npm run eslint > eslint.log 2>&1 &
+          npm run check-types > tsc.log 2>&1 &
+          npm run test:run -- --silent=passed-only > test.log 2>&1 &
+          # aguarda os três e falha se algum deles reprovou
+      - run: npm run build
+```
+
+## sonarqube.yml
+
+**Arquivo:** `.github/workflows/sonarqube.yml`  
+**Trigger:** PR e push em `develop`, `workflow_dispatch`  
+**Concurrency:** `sonarqube-${{ github.event.pull_request.number || github.ref }}` (cancela o anterior)
+
+**O que faz:**
+
+1. Checkout com `fetch-depth: 0` (necessário para o analisador decorar o histórico)
+2. Instala dependências com `npm ci`, para o analisador de TypeScript enxergar os tipos
+3. Em PR, calcula os parâmetros de PR do Sonar (`sonar.pullrequest.key/branch/base`) e usa `sonar.scm.revision` apontando para o último commit do PR, em vez do commit de merge
+4. Fora de PR, usa `sonar.branch.name`
+5. Roda `SonarSource/sonarqube-scan-action@v8`, excluindo `src/_metronic/assets` e tratando os arquivos de teste como teste (`sonar.tests`), não como código
+
+A análise fica restrita à `develop`: não roda mais em qualquer branch ou PR.
+
+**Secrets/Tokens:** `SONAR_TOKEN`, `SONAR_HOST_URL` (o SonarQube é interno — o job roda em runner self-hosted para alcançá-lo)
+
+```yaml
+# .github/workflows/sonarqube.yml
+on:
+  pull_request:
+    branches: [develop]
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+jobs:
+  sonarqube:
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci --no-audit --no-fund
+      - uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=easypdverp_easypdv-admin-app
+            -Dsonar.sources=.
+            -Dsonar.exclusions=src/_metronic/assets/**,**/*.test.*,**/__tests__/**,**/test/**
+            -Dsonar.tests=.
+            -Dsonar.test.inclusions=**/*.test.*,**/__tests__/**,**/test/**
+```
+
+## trivy-develop.yml
+
+**Arquivo:** `.github/workflows/trivy-develop.yml`  
+**Trigger:** Push em `develop`, `workflow_dispatch`  
+**Concurrency:** `trivy-develop-${{ github.ref }}` (cancela o anterior)
+
+**O que faz:**
+
+1. Chama o workflow reutilizável `trivy-image.yml` do repositório `easypdverp/easypdv-scripts`
+2. Builda a imagem usando `scripts/local/Dockerfile`, no contexto raiz do repositório
+3. Ignora vulnerabilidades sem correção disponível (`ignore-unfixed: true`)
+
+**Secrets/Tokens:** nenhum próprio (herda do workflow reutilizável)
+
+```yaml
+# .github/workflows/trivy-develop.yml
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+jobs:
+  trivy:
+    if: github.ref == 'refs/heads/develop'
+    uses: easypdverp/easypdv-scripts/.github/workflows/trivy-image.yml@master
+    with:
+      dockerfile: scripts/local/Dockerfile
+      build-context: '.'
+      ignore-unfixed: true
 ```
 
 ## sync-develop-direct.yml
@@ -278,23 +296,24 @@ jobs:
 
 **O que faz:**
 
-1. Checkout com `fetch-depth: 0` e `ref: master`
+1. Checkout com `fetch-depth: 0` e `ref: master`, autenticado com `SYNC_DEPLOY_KEY` em vez do `GITHUB_TOKEN`
 2. Configura o autor do git como `github-actions[bot]`
 3. Verifica se a branch `develop` existe
 4. Faz merge de `origin/master` em `develop`
 5. Faz push da `develop` atualizada
 6. Em caso de conflito, falha com mensagem para intervenção manual
 
-**Secrets/Tokens:** `GITHUB_TOKEN`
+A branch `develop` só aceita push de quem está na exceção da regra de proteção: a chave de deploy está na exceção, o `GITHUB_TOKEN` não está — por isso o checkout usa `ssh-key: ${{ secrets.SYNC_DEPLOY_KEY }}`.
+
+**Secrets/Tokens:** `SYNC_DEPLOY_KEY`
 
 ```yaml
 # .github/workflows/sync-develop-direct.yml
 on:
   workflow_run:
-    workflows: ["Release (semantic-release)"]
-    branches: [ master ]
-    types:
-      - completed
+    workflows: ['Release (semantic-release)']
+    branches: [master]
+    types: [completed]
 
 jobs:
   sync-develop:
@@ -304,6 +323,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ssh-key: ${{ secrets.SYNC_DEPLOY_KEY }}
           ref: master
       - name: Sync develop with master
         run: |
@@ -323,7 +343,7 @@ jobs:
 
 1. Verifica se o PR foi realmente merged e se não é de fork
 2. Obtém o SHA mais recente de `develop`
-3. Atualiza a branch de origem do PR para apontar para o mesmo SHA de `develop` com force update
+3. Atualiza a branch de origem do PR para apontar para o mesmo SHA de `develop`, com force update
 4. Mantém a branch de trabalho sincronizada para evitar conflitos futuros
 
 **Secrets/Tokens:** `GITHUB_TOKEN` via `github.token`
@@ -338,36 +358,74 @@ on:
 jobs:
   sync-branch:
     if: github.event.pull_request.merged == true && !github.event.pull_request.head.repo.fork
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux]
     steps:
-      - name: Sync source branch with develop
-        uses: actions/github-script@v7
+      - uses: actions/github-script@v7
         with:
+          github-token: ${{ github.token }}
           script: |
-            const developRef = await github.rest.git.getRef({
-              owner, repo, ref: 'heads/develop'
-            });
+            const developRef = await github.rest.git.getRef({ owner, repo, ref: 'heads/develop' });
             await github.rest.git.updateRef({
               owner, repo,
               ref: `heads/${pr.head.ref}`,
               sha: developRef.data.object.sha,
-              force: true
+              force: true,
             });
 ```
+
+## direct-push-audit.yml
+
+**Arquivo:** `.github/workflows/direct-push-audit.yml`  
+**Trigger:** Push em `main`/`master`
+
+**O que faz:**
+
+1. Consulta a API do GitHub para ver se o commit chegou associado a algum PR
+2. Quando não há PR associado, abre uma issue "Auditoria: pushes diretos na branch principal" (ou comenta na issue já aberta) registrando autor, horário, mensagem e SHA do commit
+
+**Secrets/Tokens:** `GITHUB_TOKEN` via `github.token`
+
+```yaml
+# .github/workflows/direct-push-audit.yml
+on:
+  push:
+    branches: [main, master]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Registrar push sem PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRS=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" --jq length)
+          if [ "$PRS" != "0" ]; then exit 0; fi
+          # abre ou comenta a issue de auditoria
+```
+
+## Template de PR
+
+`.github/pull_request_template.md` preenche a descrição de todo PR novo com três seções: **Resumo** (o que muda e por quê), **Como testei** (os comandos rodados e o resultado — "CI verde" não conta como teste) e **Fora desta PR** (o que ficou de fora de propósito, removida quando não há nada a listar), terminando com `Closes #`.
 
 ## Fluxo de Release
 
 O pipeline completo de release segue esta sequência:
 
 ```
-PR merged em master
+Push em master
     |
     v
 release.yml (semantic-release)
     |
     +---> CHANGELOG.md atualizado
-    +---> Git tag criada (ex: v1.27.1)
+    +---> Git tag criada (ex: v1.42.0)
     +---> GitHub Release publicada
+    +---> dispatch-docs.yml disparado com a versão nova
     |
     v
 notify-changelog.yml (disparado pela release)
@@ -378,7 +436,7 @@ notify-changelog.yml (disparado pela release)
 sync-develop-direct.yml (disparado pelo release workflow)
     |
     +---> Merge master em develop
-    +---> Push develop atualizada
+    +---> Push da develop (com SYNC_DEPLOY_KEY)
 ```
 
 ## Fluxo de PR
@@ -386,20 +444,23 @@ sync-develop-direct.yml (disparado pelo release workflow)
 O pipeline de validação de PRs segue esta sequência:
 
 ```
-PR aberto/atualizado em develop
-    |
-    v
-pr-validation-auto-approve.yml
-    |
-    +---> semantic-pr.yml (valida título conventional commits)
-    +---> pr-build.yml (check-types, lint, build)
-    |
-    v (se ambos passam)
-    |
-    +---> Auto-approve do PR
-    +---> Atualiza branch se atrasada
-    +---> Squash merge automático
-    +---> Sincroniza branch de origem com develop
+                         PR aberto/atualizado em develop
+                                     |
+                 +-------------------+-------------------+
+                 |                                       |
+                 v                                       v
+          pr-validation.yml                        sonarqube.yml
+                 |                                       |
+    +---> semantic-title: valida o título      +---> Análise estática do SonarQube,
+    |     (conventional commits)                |     decorando o PR
+    +---> build: ESLint + tsc + Vitest em
+          paralelo, depois o build
+          (pulado quando só o título/
+          descrição é editado)
+                 |
+                 v (ao fazer merge)
+                 |
+                 +---> sync-work-branch-direct.yml sincroniza a branch de origem com develop
 ```
 
 ## Interface de assinatura

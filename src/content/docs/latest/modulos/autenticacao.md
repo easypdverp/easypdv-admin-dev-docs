@@ -53,9 +53,11 @@ O interceptor de requisição lê `getAuth()` e monta `Authorization` com `auth.
 
 Respostas binárias retornam dados crus. Uma resposta JSON em uma chamada de streaming é lida como `ApiResponse` para preservar o tratamento de falhas e refresh. O código completo está em [API e Endpoints](/latest/arquitetura/api-endpoints/).
 
-### SSE de notificações
+### SSE de notificações e do chat
 
-`getFreshToken()` verifica a expiração com margem de 10 segundos e renova o token quando necessário. O módulo de notificações chama esse helper antes de abrir o `EventSource` com `?token=...`; o token enviado na URL não passa pelo interceptor de requisição do Axios.
+`getFreshToken()` verifica a expiração do token com margem de 10 segundos e renova pelo mesmo `refreshPromise` compartilhado quando necessário; um token que o `jwtDecode` não lê é tratado como vencido. O módulo de notificações chama esse helper antes de abrir o `EventSource` com `?token=...`, a cada (re)conexão, porque o backend só valida o token na abertura do stream e o token enviado na URL não passa pelo interceptor de requisição do Axios.
+
+O chat do agente usa outro caminho: o pedido ao stream aceita `text/event-stream` e `application/json` (sem isso o backend não serializa o envelope de erro e devolve 200 vazio) e usa `validateStatus: () => true` para não lançar nessas respostas. É o próprio interceptor de sucesso (`onResponse`) que lê o envelope JSON quando o content-type é `application/json` e, numa falha semântica 401, repete a chamada com o token renovado antes de devolver a resposta para quem chamou; `onResponseError` só rejeita, sem participar desse fluxo.
 
 ## AuthHelpers
 
@@ -462,6 +464,12 @@ A autenticação também governa:
 - acesso a telas de Preferências, Relatórios, Suprimentos, Financeiro, Notificações e Espaço do Contador/Gestor;
 - ações de formulário, como criação de marcadores, lotes, ajustes de estoque, importação de NFe e execução de operações de picklist;
 - exibição de botões e menus contextuais em tabelas e modais.
+
+## Confirmação pública de cadastro
+
+A tela de confirmação de cadastro (`CustomerRegistrationConfirmationPage`) roda fora da autenticação do admin; a rota está documentada em [Roteamento](/arquitetura/roteamento/).
+
+Ela confirma um cadastro de cliente feito no EasyPDV Touch, quando o cliente recebe o link por SMS. Ao abrir, consulta só `GET /public/customer-registration/{token}`; o `POST /public/customer-registration/{token}/confirm` só sai do clique em Confirmar, porque os aplicativos de SMS e WhatsApp abrem o link sozinhos para gerar a prévia. Essas rotas ficam na raiz da API, fora do prefixo `/admin` da `baseURL` padrão do client. Quando a consulta já retorna o cadastro confirmado ou expirado, a tela mostra a mensagem correspondente sem precisar do clique; um token desconhecido (HTTP 404) mostra o mesmo texto do link expirado, e o erro da confirmação (HTTP 409) mostra a mensagem do envelope.
 
 ## Veja Também
 

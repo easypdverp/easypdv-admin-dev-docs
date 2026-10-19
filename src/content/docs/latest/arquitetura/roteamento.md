@@ -37,18 +37,49 @@ return <CommunityRoutes />;
 Rotas que requerem uma permissão CASL específica usam `AbilityProtectedRoute`:
 
 ```tsx
-// Uso em SystemUserRoutes.tsx
+// Uso em SalesWrapper.tsx
 <Route
-  path="vendas/nfe-saida"
   element={
-    <AbilityProtectedRoute action="read" subject="NfeOut">
-      <NfeOutPage />
+    <AbilityProtectedRoute permission={PERMISSIONS.VENDAS_NOTAS_FISCAIS}>
+      <NfeOutWrapper />
     </AbilityProtectedRoute>
   }
+  path={'nota-saida/*'}
 />
 ```
 
-Se o usuário não tiver a permissão `read NfeOut`, é redirecionado para `/403`.
+Ver [RBAC (Permissões)](/arquitetura/rbac/) para `permission`/`permissions` e o `fallbackPath`.
+
+## Rotas Públicas
+
+Antes de escolher o conjunto de rotas por perfil, `RootRoutes` (em `AppRoutes.tsx`) declara rotas acessíveis sem sessão autenticada, fora do `MasterLayout`:
+
+- `/convite/:invitationId` — aceite de convite
+- `/confirmar-cadastro/:token` — confirmação do cadastro feito no Touch
+
+## Hubs de Relatórios
+
+As rotas de `/relatorios/*` são geradas a partir da árvore "Relatórios" de `menuConfig.ts`: cada domínio (Vendas, Suprimentos, Finanças) e cada grupo dentro dele renderiza um hub (`ReportHubPage`) com cards para os filhos, filtrados pela mesma regra de permissão do menu lateral (`canAccessMenuItem`). Sem nenhum filho permitido, o hub mostra estado vazio.
+
+```
+/relatorios/vendas                           # hub do domínio Vendas
+/relatorios/vendas/conversao-pdv             # folha (Conversão do PDV)
+/relatorios/vendas/nota-fiscal               # hub do grupo Notas Fiscais
+/relatorios/suprimentos/quebra-acuracidade   # folha (Quebra e acuracidade por PDV)
+/relatorios/financas/geral/resultado-por-pdv # folha (Resultado por PDV)
+```
+
+Necessidade de compra não fica sob `/relatorios`: `/suprimentos/necessidade-compra` é uma tela acionável em Suprimentos que lista a sugestão de compra e gera as ordens a partir dela.
+
+## Preferências
+
+`/preferencias/empresas/*` (`CompanyWrapper`) segue o padrão lista/cadastro/edição:
+
+```
+/preferencias/empresas/lista
+/preferencias/empresas/novo
+/preferencias/empresas/edita/:id
+```
 
 ## Adicionando uma Nova Rota
 

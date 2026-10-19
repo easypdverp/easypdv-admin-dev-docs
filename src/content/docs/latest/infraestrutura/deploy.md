@@ -5,41 +5,50 @@ sidebar:
   order: 2
 ---
 
-O Despensinha ERP e implantado via **Cloudflare Pages** integrado com **GitHub Actions**. Nao existem configuracoes de Docker ou Nginx no repositorio — o deploy e totalmente gerenciado pela Cloudflare.
+O Despensinha ERP é implantado por um pipeline **Jenkins** que builda a aplicação, empacota o resultado numa imagem **Docker** com **Nginx** e publica essa imagem num registry privado. Não há integração com uma plataforma de hospedagem estática (tipo Cloudflare Pages ou Vercel) — o Jenkinsfile de cada ambiente é quem builda a imagem e a envia ao registry.
 
-## Cloudflare Pages
+## Pipeline (Jenkins)
 
-O build e deploy sao disparados automaticamente quando um push e feito na branch `master`:
+Cada ambiente tem o seu próprio Jenkinsfile, Dockerfile e configuração de Nginx em `scripts/<ambiente>/`:
 
-1. O workflow `release.yml` executa o semantic-release
-2. O Cloudflare Pages detecta o novo commit em `master`
-3. O build e executado no ambiente da Cloudflare
+| Etapa | Descrição |
+|-------|-----------|
+| Build | `npm install` e `npm run build:<ambiente>` (gera `dist/`) |
+| Build & Tag da imagem | `docker build` usando `scripts/<ambiente>/Dockerfile`, que copia `dist/` para `/usr/share/nginx/html` e aplica a configuração de Nginx do ambiente |
+| Push | Login no registry com `DOCKER_CREDENTIALS` e `docker push` da imagem |
+| Limpeza (`post`) | `docker logout`, remoção das imagens locais e do `DOCKER_CONFIG` temporário do build |
 
-**Build command:**
-
-```bash
-vite build
-```
-
-**Output directory:** `dist/`
-
-**Variaveis de ambiente em producao:**
-
-As variaveis `VITE_*` sao injetadas no momento do build pela Cloudflare Pages — elas **nao** estao no arquivo `.env.production`. O arquivo `.env.production` contem apenas configuracoes locais de build. Variaveis como `VITE_APP_API_URL` sao configuradas diretamente no painel da Cloudflare Pages.
+**Variáveis de ambiente:** as variáveis `VITE_*` não são injetadas por uma plataforma externa — elas vêm do arquivo `.env.<ambiente>` versionado no repositório (`.env.production`, `.env.development`) e são embutidas no bundle no momento do `npm run build`.
 
 ## Ambientes
 
-| Ambiente | Branch | Plataforma | URL |
-|----------|--------|-----------|-----|
-| Producao | `master` | Cloudflare Pages | URL principal do ERP |
-| Preview | Branches de PR | Cloudflare Pages | URLs de preview automaticas |
+| Ambiente | Jenkinsfile | Dockerfile | Imagem |
+|----------|-------------|------------|--------|
+| Produção | `scripts/prod/Jenkinsfile` | `scripts/prod/Dockerfile` | `registry-prod.easypdv.com.br/prod/easypdv-admin-front` |
+| Dev | `scripts/dev/Jenkinsfile` | `scripts/dev/Dockerfile` | `registry.easypdv.com.br/dev/easypdv-admin-front` |
 
-**Producao:** Cada merge em `master` dispara um novo build e deploy automatico.
+**Produção:** o pipeline de `scripts/prod` é disparado por uma tag (`vX.Y.Z`), a mesma tag criada pelo `release.yml` (veja [CI/CD](/infraestrutura/ci-cd/)); também pode ser executado manualmente informando uma tag ou um ref. Builda com `npm run build:production`, versiona a imagem com `VERSION` (extraído da tag) e publica também como `:latest`.
 
-**Preview:** PRs recebem URLs de preview geradas automaticamente pela Cloudflare Pages, permitindo revisao visual antes do merge.
+**Dev:** o pipeline de `scripts/dev` builda com `npm run build:development` e publica somente a tag `:latest`; aborta quando o commit traz `[skip ci]` na mensagem.
 
-## Nota sobre Docker/Nginx
+Em ambos, o Dockerfile final é baseado em `nginx:alpine`: copia o `dist/` gerado e a configuração de `scripts/<ambiente>/nginx/`, que serve os arquivos estáticos e redireciona todas as rotas para `index.html` (roteamento client-side).
 
-O repositorio do Despensinha ERP **nao contem** arquivos de configuracao Docker (`Dockerfile`, `docker-compose.yml`) ou Nginx (`nginx.conf`). Todo o processo de build, hospedagem e CDN e gerenciado pela Cloudflare Pages.
+## Execução local com Docker
 
-Nao e necessario configurar servidores, containers ou proxies reversos para fazer deploy da aplicacao.
+Para rodar o frontend localmente sem instalar Node ou npm na máquina, o repositório tem um `compose.yaml` próprio (não confundir com os Dockerfiles de deploy acima):
+
+```sh
+docker compose up --build -d --wait
+```
+
+Isso builda a imagem usando `scripts/local/Dockerfile` (um `node:24-alpine` que roda `npm ci` e sobe o Vite em modo development, exposto na porta 3000) e deixa a aplicação em http://localhost:3000.
+
+Pontos relevantes dessa execução:
+
+- O serviço recebe as variáveis do `.env.development`. Arquivos `.env` não são copiados para a imagem; `.env.development.local` e `.env.local` da máquina não interferem. A porta local é sempre 3000, independentemente de `VITE_PORT`.
+- A API configurada em `VITE_APP_API_URL` precisa estar acessível pelo navegador — o Compose inicia somente o frontend. O `.env.development` versionado aponta para a API de DEV; para usar outra API, ajuste `VITE_APP_API_URL` nesse arquivo e recrie o container.
+- Para o login com Google, o cliente OAuth definido no `.env.development` precisa autorizar `http://localhost:3000` como origem JavaScript.
+- Acompanhar logs e parar o serviço: `docker compose logs -f admin-app` e `docker compose down`.
+- Depois de alterar o código, basta rodar o comando de inicialização de novo para reconstruir a imagem. Depois de alterar o `.env.development`, recriar o container com `docker compose up -d --force-recreate --wait`.
+
+Veja o pré-requisito de backend local e o setup em um comando (`./scripts/setup`) em [Estrutura do Projeto](/introducao/estrutura-do-projeto/).
