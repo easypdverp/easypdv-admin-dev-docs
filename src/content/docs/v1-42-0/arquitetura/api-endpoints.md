@@ -724,6 +724,7 @@ O catálogo documentado reúne **104 arquivos de endpoints** organizados em 11 d
 | SupplyReportEndpoints | `shrinkage` | `/supply/reports/shrinkage/list` | Relatorio de quebra e acuracidade do estoque por PDV |
 | SupplyReportEndpoints | `shrinkageExport` | `/supply/reports/shrinkage/export` | Exportar quebra e acuracidade |
 | SupplyReportEndpoints | `purchaseSuggestion` | `/supply/reports/purchase-suggestion` | Sugestão de compra |
+| SupplyReportEndpoints | `purchaseSuggestionExport` | `/supply/reports/purchase-suggestion/export` | Exportar sugestão de compra |
 | SupplyReportEndpoints | `costOfGoodsSold` | `/supply/reports/inventory/cost-of-goods-sold` | Relatório de custo da mercadoria vendida |
 | SupplyReportEndpoints | `costOfGoodsSoldExport` | `/supply/reports/inventory/cost-of-goods-sold/export` | Exportação do custo da mercadoria vendida |
 | SupplierContactEndpoints | `list` | `/registrations/supplier/list` | Listar fornecedores |
@@ -1073,12 +1074,12 @@ O catálogo acima reúne os seguintes arquivos e endpoints:
 | Catalogo | 6 | 49 |
 | Vendas | 9 | 58 |
 | Financeiro | 15 | 111 |
-| Suprimentos/Estoque | 19 | 137 |
+| Suprimentos/Estoque | 19 | 138 |
 | NFe/Fiscal | 11 | 100 |
 | Contatos | 7 | 36 |
 | Sistema/Configuracao | 12 | 39 |
 | Dashboard | 3 | 23 |
 | Outros | 16 | 84 |
-| **Total** | **104** | **687** |
+| **Total** | **104** | **688** |
 
 Todos os endpoints seguem o padrão de objetos constantes exportados, com paths estáticos para operações sem parâmetros e arrow functions para paths dinâmicos. Os wrappers tipados em `axios.ts` garantem que todas as chamadas retornem `ApiResponse<T>`, mantendo consistência na camada de comunicação. Endpoints que utilizam `responseType` binário ou em streaming retornam o payload cru e são tratados sem o envelope padrão da API.
