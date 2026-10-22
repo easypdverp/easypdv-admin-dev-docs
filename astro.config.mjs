@@ -102,6 +102,11 @@ export default defineConfig({
           items: versionSidebar('v1-41-0'),
         },
                 {
+          label: 'v1-41-1',
+          collapsed: true,
+          items: versionSidebar('v1-41-1'),
+        },
+        {
           label: 'v1-41-2',
           collapsed: true,
           items: versionSidebar('v1-41-2'),
