@@ -62,3 +62,15 @@ pages/[modulo]/
 - `src/app/App.tsx` — providers globais
 - `src/app/routing/AppRoutes.tsx` — roteamento principal
 - `src/api/axios.ts` — cliente HTTP global
+
+## Executar o Projeto
+
+**Pré-requisito:** a versão do Node em `.nvmrc`, a mesma usada no CI (com nvm: `nvm install`). Para consumir a API local, o backend do [easypdv-main-api-modular](https://github.com/easypdverp/easypdv-main-api-modular) precisa estar no ar em `http://localhost:8080` — é ele que cria o admin de exemplo usado para login.
+
+**Primeira vez:** `./scripts/setup` confere a versão do Node, instala as dependências (`npm ci`), cria o `.env.development.local` (porta 3000 e API no backend local) se ele ainda não existir e avisa se o backend local não responde. Pode ser executado de novo quando quiser.
+
+**Rodar:** `npm run dev` sobe o front em `http://localhost:3000` (outra porta: `VITE_PORT=3001 npm run dev`).
+
+**Testar:** `npm run lint` (ESLint e `tsc`), `npm run test:run` (Vitest) e `npm run build`.
+
+Para rodar via Docker Compose, sem instalar Node ou npm na máquina, veja [Deploy](/infraestrutura/deploy/).

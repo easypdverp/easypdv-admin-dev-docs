@@ -85,32 +85,24 @@ export const initialBrandEmpty: BrandDto = {
 src/app/models/
 ├── AcceptInvitationRequestDto.ts
 ├── AccessCredentialsDto.ts
-├── ...                          # ~200 arquivos de modelo no raiz
+├── ...                          # ~340 arquivos de modelo no raiz
 ├── filters/                     # Tipos de filtro para listagens
+│   ├── CompanyFilter.ts
+│   ├── FinancialAccountFilter.ts
 │   ├── PlanogramFilter.ts
 │   ├── PointOfSaleFilter.ts
+│   ├── SalesOccurrenceFilter.ts
 │   ├── SupplyTaskFilter.ts
 │   ├── UserRoleFilter.ts
 │   └── WarehouseEntryFilter.ts
-└── reports/                     # Tipos especificos de relatorios
-    ├── finance/
-    │   └── FinanceReportDtos.ts  # 10 tipos (BalanceSheet, ProfitAndLoss, CashFlow, etc.)
-    ├── sales/
-    │   ├── CashierReportDto.ts
-    │   ├── InvoiceReportDtos.ts  # 12 tipos (consultas por produto, CFOP, cliente, ICMS)
-    │   ├── SalesFinanceReportDto.ts
-    │   └── TransactionReportDto.ts
-    └── supply/
-        ├── BuyOrderReportDto.ts
-        ├── InventoryReportDtos.ts  # 14 tipos (entrada/saida, saldo, movimentacao, etc.)
-        ├── NfeInReportDtos.ts      # 10 tipos (operacao, fornecedor, produto, progresso)
-        ├── ProductLossReportDtos.ts
-        └── PurchaseSuggestionReportDtos.ts
+└── reports/
+    └── finance/
+        └── FinanceReportDtos.ts  # 4 tipos (FinanceCategoryReport, FinanceCustomerReport, com filtros)
 ```
 
-- **Raiz** (`src/app/models/`): contem a grande maioria dos modelos (~200 arquivos)
+- **Raiz** (`src/app/models/`): contem a grande maioria dos modelos (~340 arquivos)
 - **`filters/`**: tipos usados como parametros de filtragem em endpoints de listagem
-- **`reports/`**: tipos de dados e filtros para telas de relatorios, organizados por dominio (finance, sales, supply)
+- **`reports/`**: a maioria dos tipos de relatorio (finance, sales, supply) esta em arquivos individuais no raiz — um arquivo por DTO, filtro e totais. Só o relatorio por categoria e por cliente do financeiro (`FinanceCategoryReportDto`, `FinanceCustomerReportDto`) fica agrupado em `reports/finance/FinanceReportDtos.ts`.
 
 ## Padroes de Tipagem
 
@@ -256,10 +248,11 @@ export const initialProductDtoEmpty: ProductDto = {
 | `OrderItemDto.ts` | type | Item de pedido |
 | `OrderInstallmentDto.ts` | type | Parcela de pedido |
 | `OrderCurrenceDto.ts` | type | Ocorrencia/evento de pedido |
-| `SalesOrderDto.ts` | type | Pedido de venda (formato resumido) |
+| `SalesOrderDto.ts` | type | Pedido de venda (formato resumido); venda cancelada sem pagamento aprovado traz `not_completed_reason?: EnumType \| null` com o motivo da venda nao concluida |
 | `SalesOrderHistoryDto.ts` | type | Historico de pedido |
-| `SalesOrderReportDto.ts` | type | Dados de relatorio de vendas |
-| `SalesOrderReportFilterDto.ts` | type | Filtro para relatorio de vendas |
+| `SalesOrderReportDto.ts` | type | Linha do relatorio de vendas, agrupavel por produto, categoria, cliente, PDV, dia, mes, promocao ou cupom (ver `SalesOrderReportGroupBy`) |
+| `SalesOrderReportFilterDto.ts` | type | Filtro para relatorio de vendas, com `group_by: EnumType` e `company_ids?: string[]` |
+| `SalesOrderReportSummaryDto.ts` | type | Totais do filtro inteiro do relatorio de vendas (`additional_content.summary`) |
 | `SalesOrderChartDto.ts` | type | Dados para grafico de vendas |
 | `SalesOrderChartItemDto.ts` | type | Item individual do grafico |
 | `SalesResumeDto.ts` | type | Resumo de vendas do dashboard |
@@ -268,23 +261,25 @@ export const initialProductDtoEmpty: ProductDto = {
 | `PaymentDto.ts` | type | Pagamento de pedido |
 | `InstallmentDto.ts` | type | Parcela de pagamento |
 | `TransactionMethodDto.ts` | type | Metodo de transacao (dinheiro, cartao, etc.) |
-| `PointOfSale.ts` | type | Ponto de venda (PDV) |
+| `PointOfSale.ts` | type | Ponto de venda (PDV); traz a empresa do PDV em `company?: CompanySummaryDto` |
 | `PosStatusResumeDto.ts` | type | Status resumido do PDV |
 | `TerminalDto.ts` | type | Terminal de pagamento |
 | `TerminalPasswordEditRequestDto.ts` | type | Requisicao de alteracao de senha do terminal |
+| `PointOfSaleConversionReportDto.ts` | type | Conversao do PDV: contagem por etapa (iniciada, concluida, abandonada no carrinho/pagamento, pagamento negado) e taxa de conversao |
+| `PointOfSaleConversionReportFilterDto.ts` | type | Filtro da conversao do PDV, com agrupamento por `PointOfSaleConversionGroupByType` (PDV, adquirente, forma de pagamento, dia da semana × hora) |
 
 ### Financeiro
 
 | Arquivo | Tipo | Descricao |
 |---------|------|-----------|
 | `FinancialEntryDto.ts` | type | Lancamento financeiro |
-| `FinancialAccountDto.ts` | type | Conta financeira |
+| `FinancialAccountDto.ts` | type | Conta financeira; traz a empresa dela em `company?: CompanySummaryDto` |
 | `FinancialAccountHighestBalanceDto.ts` | type | Conta com maior saldo |
 | `FinancialBalanceDto.ts` | type | Saldo de conta financeira |
 | `FinancialCategory.ts` | type | Categoria financeira |
 | `FinancialCategoryGroupDto.ts` | type | Grupo de categorias financeiras |
 | `FinanceResumeDto.ts` | type | Resumo financeiro do dashboard |
-| `BankAccountDto.ts` | type | Conta bancaria |
+| `BankAccountDto.ts` | type | Conta bancaria; traz a empresa dela em `company?: CompanySummaryDto` |
 | `BankDto.ts` | type | Banco |
 | `BillDto.ts` | type | Conta a pagar/receber |
 | `BillChartDto.ts` | type | Dados para grafico de contas |
@@ -306,7 +301,7 @@ export const initialProductDtoEmpty: ProductDto = {
 
 | Arquivo | Tipo | Descricao |
 |---------|------|-----------|
-| `Inventory.ts` | type | Estoque/deposito |
+| `Inventory.ts` | type | Estoque/deposito; traz a empresa dele em `company?: CompanySummaryDto` |
 | `InventoryConfigDto.ts` | type | Configuracoes de estoque |
 | `InventoryHasProductDto.ts` | type | Relacao estoque-produto |
 | `InventoryStockBreakdownDto.ts` | type | Detalhamento de estoque |
@@ -318,9 +313,17 @@ export const initialProductDtoEmpty: ProductDto = {
 | `ProductInventoryDetailsDto.ts` | type | Detalhes de inventario de produto |
 | `ProductInventoryReserveDto.ts` | type | Reserva de estoque |
 | `ExpiringProductDto.ts` | type | Produto proximo do vencimento |
-| `BuyOrderDto.ts` | type | Pedido de compra |
-| `BuyOrderConfigDto.ts` | type | Configuracao de pedido de compra |
+| `BuyOrderDto.ts` | type | Pedido de compra; traz a empresa compradora em `company?: CompanySummaryDto` (so informada na criacao, fixa na edicao) |
+| `BuyOrderConfigDto.ts` | type | Configuracao de pedido de compra, com as opcoes de documento e os templates de envio ao fornecedor |
 | `BuyOrderTotalsDto.ts` | type | Totais do pedido de compra |
+| `BuyOrderDocumentDto.ts` | type | Documento gerado do pedido de compra para envio ao fornecedor (PDF ou outro formato) |
+| `BuyOrderDocumentOptionsDto.ts` | type | Colunas e opcoes de layout do documento do pedido |
+| `BuyOrderDocumentRequestDto.ts` | type | Requisicao para gerar o documento do pedido |
+| `BuyOrderDocumentEmailRequestDto.ts` | type | Requisicao para enviar o documento do pedido por e-mail |
+| `BuyOrderDocumentEmailResultDto.ts` | type | Resultado do envio por e-mail |
+| `GenerateBuyOrderPayload.ts` | type | Payload para gerar um pedido de compra a partir da necessidade de compra |
+| `GenerateBuyOrdersPayload.ts` | type | Payload para gerar varios pedidos de compra de uma vez |
+| `GeneratedBuyOrderDto.ts` | type | Pedido de compra gerado a partir da necessidade de compra |
 | `SupplierDto.ts` | type | Fornecedor |
 | `Provider.ts` | type | Provider/fornecedor |
 | `SupplyType.ts` | type | Tipo de suprimento |
@@ -424,8 +427,11 @@ export const initialProductDtoEmpty: ProductDto = {
 |---------|------|-----------|
 | `ProductLossHighlightDto.ts` | type | Destaque de perda de produto |
 | `ProductLossOccurrenceDto.ts` | type | Ocorrencia de perda |
+| `ProductLossOccurrenceFilter.ts` | type | Filtro de ocorrencias de perda |
 | `ProductLossReportDto.ts` | type | Relatorio de perdas |
 | `ProductLossReportFilter.ts` | type | Filtro de relatorio de perdas |
+| `ProductLossReportTotalsDto.ts` | type | Totais do relatorio de perdas |
+| `ProductLossTypeTotalsDto.ts` | type | Totais por tipo de perda |
 | `BarcodeNotFoundReportDto.ts` | type | Relatorio de codigos de barras nao encontrados |
 | `BarcodeNotFoundReportFilterDto.ts` | type | Filtro do relatorio de codigos nao encontrados |
 
@@ -433,14 +439,15 @@ export const initialProductDtoEmpty: ProductDto = {
 
 | Arquivo | Tipo | Descricao |
 |---------|------|-----------|
-| `CompanyDto.ts` | type | Dados da empresa |
+| `CompanyDto.ts` | type | Dados completos da empresa (Preferências › Empresas), com o contador em `accountant?: AccountantDto` |
+| `CompanySummaryDto.ts` | type | Empresa resumida (`id`, `social_name`, `fantasy_name`, `cnpj`), usada como referencia em outros DTOs (`company?: CompanySummaryDto`) |
+| `CompanyBillingDto.ts` | type | Dados de cobranca de uma empresa faturada (pessoa, documento, regime tributario, endereco) |
+| `BilledCompanyDto.ts` | type | Empresa faturavel referenciada em `CompanyBillingDto.company` |
 | `AccountDetailsDto.ts` | type | Detalhes da conta |
 | `AdminAccountDetailsDto.ts` | type | Detalhes da conta admin |
-| `AccountantDto.ts` | type | Dados do contador |
-| `SystemBillingDto.ts` | type | Faturamento do sistema |
+| `AccountantDto.ts` | type | Dados do contador; listado e criado por modal no cadastro da empresa (`AccountantEndpoints`) |
 | `SystemModulesDto.ts` | type | Modulos do sistema |
 | `SystemNotificationConfigDto.ts` | type | Configuracao de notificacoes do sistema |
-| `SystemOwnerDto.ts` | type | Proprietario do sistema |
 | `SystemRegistrationConfigDto.ts` | type | Configuracao de registro |
 | `SystemStorageDetailsDto.ts` | type | Detalhes de armazenamento |
 | `SystemTypeDto.ts` | type | Tipo de sistema |
@@ -482,65 +489,105 @@ Tipos de filtro ficam em `src/app/models/filters/` e sao usados como parametros 
 
 | Arquivo | Descricao |
 |---------|-----------|
+| `CompanyFilter.ts` | Filtro de empresas por id (`company_ids`) e por rotulo (`company_labels`) |
+| `FinancialAccountFilter.ts` | Filtro de contas financeiras por status e por empresa (`company_ids`) |
 | `PlanogramFilter.ts` | Filtro por ponto de venda para planogramas |
-| `PointOfSaleFilter.ts` | Filtro de PDVs (com planograma, comunidade, principal) |
+| `PointOfSaleFilter.ts` | Filtro de PDVs (com planograma, comunidade, principal e empresa, `company_ids`) |
 | `SupplyTaskFilter.ts` | Filtro de tarefas de suprimento por status |
 | `UserRoleFilter.ts` | Filtro de perfis por tipo (sistema ou customizado) |
 | `WarehouseEntryFilter.ts` | Filtro de entradas por tipo, data e estoque |
 
+### Filtro multiempresa
+
+Telas e relatorios que aceitam mais de uma empresa no filtro usam o campo `company_ids?: string[]` (um array de ids, nunca um `companyId` unico). O campo aparece em `CompanyFilter`, `FinancialAccountFilter`, `PointOfSaleFilter` e na maioria dos `*FilterDto` de relatorio (`SalesOrderReportFilterDto`, `BuyOrderReportFilterDto`, `ShrinkageReportFilterDto`, `ProfitAndLossFilterDto`, `PaymentsReceivedReportFilterDto`, `PointOfSaleConversionReportFilterDto`, `PointOfSaleResultReportFilterDto`, `InventoryWithoutMovementFilterDto`, entre outros). Nos DTOs de cadastro, a empresa do registro aparece como `company?: CompanySummaryDto` (ver a tabela de Sistema e Configuracao) em `PointOfSaleDto` (campo `company`), `InventoryDto` (deposito/estoque), `BuyOrderDto`, `FinancialAccountDto` e `BankAccountDto`.
+
+### Filtro de faixa de valor
+
+Os filtros de pedido de venda e de ordem de compra enviam uma faixa de valor como dois campos separados, `min_amount?: number` e `max_amount?: number`, em vez de um filtro de valor exato. O componente de interface (`AmountRangeFilter`, em `src/app/components/inputs/AmountRangeFilter/`) usa o tipo auxiliar `AmountRange`:
+
+```typescript
+// src/app/components/inputs/AmountRangeFilter/core/_models.ts
+export type AmountRange = {
+  min?: number;
+  max?: number;
+};
+```
+
 ## Relatorios
 
-Tipos de relatorio ficam em `src/app/models/reports/` organizados por dominio. Cada arquivo tipicamente exporta um tipo de dados (`*Dto`) e um tipo de filtro (`*FilterDto`):
+A maioria dos tipos de relatorio vive em arquivos individuais no raiz de `src/app/models/` — um arquivo por DTO de linha, por filtro e por totais (ex.: `ShrinkageReportDto.ts` e `ShrinkageReportFilterDto.ts`). Só o relatorio por categoria e por cliente do financeiro fica agrupado em `src/app/models/reports/finance/FinanceReportDtos.ts`. Cada relatorio segue o padrao `*ReportDto` (linha), `*ReportFilterDto` (filtro) e, quando o backend devolve totais do filtro inteiro, `*ReportTotalsDto` ou `*SummaryDto`.
 
-### Financeiro (`reports/finance/`)
+### Financeiro
 
-| Arquivo | Tipos Exportados | Descricao |
-|---------|-----------------|-----------|
-| `FinanceReportDtos.ts` | `BalanceSheetDto`, `BalanceSheetFilterDto`, `ProfitAndLossDto`, `ProfitAndLossFilterDto`, `CashFlowReportDto`, `CashFlowReportFilterDto`, `FinanceCategoryReportDto`, `FinanceCategoryReportFilterDto`, `FinanceCustomerReportDto`, `FinanceCustomerReportFilterDto`, `PayablesReportDto`, `PayablesReportFilterDto`, `ReceivablesReportDto`, `ReceivablesReportFilterDto`, `PaymentReceivedReportDto`, `PaymentReceivedReportFilterDto` | Relatorios financeiros: balanco patrimonial, DRE, fluxo de caixa, por categoria, por cliente, contas a pagar/receber, pagamentos recebidos |
+| Arquivo | Descricao |
+|---------|-----------|
+| `BalanceSheetReportDto.ts` / `BalanceSheetReportFilterDto.ts` / `BalanceSheetReportTotalsDto.ts` | Saldos por conta financeira: saldo anterior, entradas, saidas, ajustes e saldo final |
+| `ProfitAndLossDto.ts` / `ProfitAndLossFilterDto.ts` | DRE por linha (`code`, `level: 'LINE' \| 'DETAIL' \| 'SUBTOTAL'`); o filtro tem `compare_months?: boolean` para comparar meses do periodo, com `months?: ProfitAndLossMonthAmountDto[]` em cada linha |
+| `ProfitAndLossMonthAmountDto.ts` | Valor e percentual da linha da DRE num mes, usado quando a comparacao mensal esta ativa |
+| `ProfitAndLossAdditionalContentDto.ts` | Subtotais e avisos da DRE calculados no backend |
+| `CashFlowReportDto.ts` / `CashFlowReportFilterDto.ts` / `CashFlowReportTotalsDto.ts` | Fluxo de caixa com saldos reais |
+| `BillInstallmentReportDto.ts` / `BillInstallmentReportFilterDto.ts` / `BillInstallmentReportTotalsDto.ts` | Contas a pagar/receber por parcela, com status, aging (`aging_bucket`) e totais |
+| `AgingBucketTotalDto.ts` | Total por faixa de aging (`aging_bucket`) das contas a pagar/receber |
+| `PaymentsReceivedReportDto.ts` / `PaymentsReceivedReportFilterDto.ts` / `PaymentsReceivedReportTotalsDto.ts` | Recebimentos de contas a receber, com bruto, desconto, taxa, juros e multa; o filtro aceita `bill_type?: EnumType` |
+| `PaymentMethodTotalDto.ts` | Total recebido por forma de pagamento (`PaymentMethodType`), usado para o recebimento por tipo |
+| `PointOfSaleResultReportDto.ts` / `PointOfSaleResultReportFilterDto.ts` | Resultado (margem de contribuicao) por PDV: vendas, descontos, CMV, taxas de adquirente, repasses de comunidade e despesas |
+| `FinancialEntryTotalsDto.ts` | Totais de lancamentos financeiros |
+| `reports/finance/FinanceReportDtos.ts` | `FinanceCategoryReportDto`/`FinanceCategoryReportFilterDto` e `FinanceCustomerReportDto`/`FinanceCustomerReportFilterDto` — relatorios por categoria e por cliente |
 
-### Vendas (`reports/sales/`)
+### Vendas
 
-| Arquivo | Tipos Exportados | Descricao |
-|---------|-----------------|-----------|
-| `CashierReportDto.ts` | `CashierReportDto`, `CashierReportFilterDto` | Relatorio de caixa (abertura, fechamento, vendas, sangrias, suprimentos) |
-| `InvoiceReportDtos.ts` | `InvoiceProductQueryDto`, `InvoiceProductQueryFilterDto`, `InvoiceOperationDto`, `InvoiceOperationFilterDto`, `InvoiceCustomerDto`, `InvoiceCustomerFilterDto`, `InvoiceProductDto`, `InvoiceProductFilterDto`, `InvoiceProgressDto`, `InvoiceProgressFilterDto`, `InvoiceIcmsDto`, `InvoiceIcmsFilterDto` | Relatorios de notas fiscais: consulta por produto, por CFOP, por cliente, progresso, ICMS |
-| `SalesFinanceReportDto.ts` | `SalesFinanceReportDto`, `SalesFinanceReportFilterDto` | Relatorio financeiro de vendas (receita, custo, margem, markup) |
-| `TransactionReportDto.ts` | `TransactionReportDto`, `TransactionReportFilterDto` | Relatorio de transacoes (movimentacoes de caixa) |
+| Arquivo | Descricao |
+|---------|-----------|
+| `SalesOrderReportDto.ts` / `SalesOrderReportFilterDto.ts` / `SalesOrderReportSummaryDto.ts` | Relatorio de vendas com bruto, desconto, custo, margem e markup; o filtro agrupa (`group_by: EnumType`) por produto, categoria, cliente, PDV, dia, mes, promocao ou cupom, valores do enum `SalesOrderReportGroupBy` |
+| `HourlySalesWeekdayHourDto.ts` | Vendas por hora, na grade de dia da semana × hora |
+| `PointOfSaleConversionReportDto.ts` / `PointOfSaleConversionReportFilterDto.ts` | Conversao do PDV: contagem por etapa do carrinho ate o pagamento e taxa de conversao; o filtro agrupa por PDV, adquirente, forma de pagamento ou dia da semana × hora (`PointOfSaleConversionGroupByType`) |
+| `InvoiceOperationDto.ts` / `InvoiceOperationFilterDto.ts` / `InvoiceOperationTotalsDto.ts` | Notas fiscais de venda por operacao (CFOP) |
+| `InvoiceCustomerDto.ts` / `InvoiceCustomerFilterDto.ts` | Notas fiscais de venda por cliente |
+| `InvoiceProductQueryDto.ts` / `InvoiceProductQueryFilterDto.ts` / `InvoiceProductQueryTotalsDto.ts` | Consulta de produtos por nota fiscal de venda |
+| `InvoiceProgressDto.ts` / `InvoiceProgressFilterDto.ts` / `InvoiceProgressDeniedReasonDto.ts` | Evolucao fiscal das notas de venda, com negadas agrupadas por motivo |
+| `InvoiceTaxSumsDto.ts` | Somas de tributos de uma nota, usadas nos relatorios fiscais de venda |
+| `SalesInvoiceTotalsDto.ts` | Totais de notas fiscais de venda |
 
-### Suprimentos (`reports/supply/`)
+### Suprimentos
 
-| Arquivo | Tipos Exportados | Descricao |
-|---------|-----------------|-----------|
-| `BuyOrderReportDto.ts` | `BuyOrderReportDto`, `BuyOrderReportFilterDto` | Relatorio de pedidos de compra |
-| `InventoryReportDtos.ts` | `InventoryInOutDto`, `InventoryInOutFilterDto`, `InventoryBalanceDto`, `InventoryBalanceFilterDto`, `InventoryMovementDto`, `InventoryMovementFilterDto`, `InventoryNoMovementDto`, `InventoryNoMovementFilterDto`, `InventoryBelowMinDto`, `InventoryBelowMinFilterDto`, `InventoryFinanceDto`, `InventoryFinanceFilterDto`, `InventoryUsageDto`, `InventoryUsageFilterDto` | Relatorios de estoque: entrada/saida, saldo, movimentacao, sem movimento, abaixo do minimo, financeiro, consumo |
-| `NfeInReportDtos.ts` | `NfeInOperationDto`, `NfeInOperationFilterDto`, `NfeInSupplierDto`, `NfeInSupplierFilterDto`, `NfeInProductDto`, `NfeInProductFilterDto`, `NfeInProgressDto`, `NfeInProgressFilterDto`, `NfeInProductSupplierDto`, `NfeInProductSupplierFilterDto` | Relatorios de NF-e de entrada: por operacao, fornecedor, produto, progresso, produto-fornecedor |
-| `ProductLossReportDtos.ts` | `ProductLossDto`, `ProductLossFilterDto` | Relatorio de perdas de produto |
-| `PurchaseSuggestionReportDtos.ts` | `PurchaseSuggestionDto`, `PurchaseSuggestionFilterDto` | Sugestao de compra (estoque ideal, cobertura, custo estimado) |
+| Arquivo | Descricao |
+|---------|-----------|
+| `BuyOrderReportDto.ts` / `BuyOrderReportFilterDto.ts` / `BuyOrderReportTotalsDto.ts` / `BuyOrderReportStatusTotalsDto.ts` | Relatorio de pedidos de compra, com status reais e totais por status |
+| `InventoryInOutReportDto.ts` / `InventoryInOutFilterDto.ts` / `InventoryInOutSummaryDto.ts` | Entrada e saida de estoque por tipo de movimento, com saldo inicial, final e totais |
+| `InventoryBalanceDto.ts` / `InventoryBalanceFilterDto.ts` / `InventoryBalanceTotalsDto.ts` | Saldo de estoque valorizado a custo medio, com situacao do saldo e totais |
+| `InventoryWithoutMovementDto.ts` / `InventoryWithoutMovementFilterDto.ts` / `InventoryWithoutMovementTotalsDto.ts` | Produtos sem circulacao: estoque parado, valor parado (`stuck_value`), dias sem venda e, com `only_active_planogram_items`, so os itens do planograma ativo |
+| `ShrinkageReportDto.ts` / `ShrinkageReportFilterDto.ts` | Quebra e acuracidade por PDV: vencidos, avariados, perdidos, saida sem pagamento, falta/sobra de contagem, percentual de quebra e de acuracidade |
+| `NfeInOperationDto.ts` / `NfeInOperationFilterDto.ts` / `NfeInOperationTotalsDto.ts` | NF-e de entrada por operacao |
+| `NfeInSupplierDto.ts` / `NfeInSupplierFilterDto.ts` / `NfeInSupplierTotalsDto.ts` | NF-e de entrada por fornecedor |
+| `NfeInProductDto.ts` / `NfeInProductFilterDto.ts` / `NfeInProductTotalsDto.ts` | NF-e de entrada por produto |
+| `NfeInProductSupplierDto.ts` / `NfeInProductSupplierFilterDto.ts` / `NfeInProductSupplierTotalsDto.ts` | Preco de compra por fornecedor: custo medio, ultimo custo, `price_variation_percentage`, `is_cheapest` e diferenca para o mais barato |
+| `NfeInProgressDto.ts` / `NfeInProgressFilterDto.ts` / `NfeInProgressTotalsDto.ts` | Progresso de NF-e de entrada |
+| `ProductLossReportDto.ts` / `ProductLossReportFilter.ts` / `ProductLossReportTotalsDto.ts` / `ProductLossTypeTotalsDto.ts` | Perdas por produto a custo medio, com totais por tipo de perda |
+| `PurchaseSuggestionDto.ts` / `PurchaseSuggestionFilterDto.ts` / `PurchaseSuggestionSummaryDto.ts` / `PurchaseSuggestionBuyOrderDto.ts` | Sugestao de compra (estoque ideal, cobertura, custo estimado, situacao `coverage_status: EnumType<StockCoverageStatus>`), com o pedido de compra gerado a partir dela |
 
 ## Resumo
 
-O diretorio de modelos contem **210 arquivos** no total, distribuidos da seguinte forma:
+O diretorio de modelos tem bem mais de 300 arquivos no raiz, a maior parte deles pela fragmentacao dos relatorios (cada DTO, filtro e totais em seu proprio arquivo — ver a secao Relatorios nesta pagina) e pelos modelos de empresa (`CompanySummaryDto`, `CompanyBillingDto`, `BilledCompanyDto`). A tabela abaixo mantem a contagem por dominio documentada nesta pagina; ela cobre os arquivos citados nas secoes acima e nao e uma auditoria exaustiva de todo o diretorio:
 
 | Dominio | Arquivos |
 |---------|----------|
 | Autenticacao e Usuarios | 14 |
 | Catalogo de Produtos | 20 |
-| Vendas e Pedidos | 20 |
+| Vendas e Pedidos | 23 |
 | Financeiro | 24 |
-| Suprimentos e Estoque | 33 |
+| Suprimentos e Estoque | 41 |
 | Fiscal e NF-e | 22 |
 | Contatos e Comunicacao | 10 |
 | Dashboard e Graficos | 7 |
 | Planograma | 5 |
 | Telemetria e PDV | 8 |
-| Perdas de Produto | 6 |
-| Sistema e Configuracao | 20 |
+| Perdas de Produto | 9 |
+| Sistema e Configuracao | 21 |
 | Utilitarios e Compartilhados | 16 |
-| **Subtotal raiz** | **205** |
-| Filtros (`filters/`) | 5 |
-| Relatorios (`reports/`) | ~50 tipos em 10 arquivos |
-| **Total de arquivos** | **~220** |
+| **Subtotal raiz (documentado)** | **220** |
+| Filtros (`filters/`) | 7 |
+| Relatorios adicionais (raiz, fora da tabela acima) + `reports/finance/FinanceReportDtos.ts` | ~82 tipos em ~80 arquivos |
 
 :::note
-Os arquivos em `reports/` exportam multiplos tipos cada, totalizando ~50 tipos de relatorio distribuidos em 10 arquivos. A contagem de 210 refere-se aos arquivos `.ts` no diretorio raiz (200 arquivos .ts + 2 subdiretorios filters/ e reports/ contabilizados pelo sistema de arquivos). Os 5 filtros e 10 arquivos de relatorio sao adicionais.
+A contagem acima documenta os arquivos citados nesta pagina, nao o total exato do diretorio (que tem mais de 340 arquivos no raiz). A maior parte dos tipos de relatorio — financeiro, vendas e suprimentos — esta em arquivos individuais no raiz, fora de `reports/{dominio}/`; so o relatorio por categoria e por cliente do financeiro fica agrupado em `reports/finance/FinanceReportDtos.ts`. Alguns arquivos de relatorio (ex.: `ProductLossReportDto.ts`, `SalesOrderReportDto.ts`) ja aparecem nas tabelas de dominio acima e sao citados de novo na secao de Relatorios por clareza.
 :::

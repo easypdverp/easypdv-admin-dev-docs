@@ -53,9 +53,11 @@ O interceptor de requisição lê `getAuth()` e monta `Authorization` com `auth.
 
 Respostas binárias retornam dados crus. Uma resposta JSON em uma chamada de streaming é lida como `ApiResponse` para preservar o tratamento de falhas e refresh. O código completo está em [API e Endpoints](/latest/arquitetura/api-endpoints/).
 
-### SSE de notificações
+### SSE de notificações e do chat
 
-`getFreshToken()` verifica a expiração com margem de 10 segundos e renova o token quando necessário. O módulo de notificações chama esse helper antes de abrir o `EventSource` com `?token=...`; o token enviado na URL não passa pelo interceptor de requisição do Axios.
+`getFreshToken()` verifica a expiração do token com margem de 10 segundos e renova pelo mesmo `refreshPromise` compartilhado quando necessário; um token que o `jwtDecode` não lê é tratado como vencido. O módulo de notificações chama esse helper antes de abrir o `EventSource` com `?token=...`, a cada (re)conexão, porque o backend só valida o token na abertura do stream e o token enviado na URL não passa pelo interceptor de requisição do Axios.
+
+O chat do agente usa outro caminho: o pedido ao stream aceita `text/event-stream` e `application/json` (sem isso o backend não serializa o envelope de erro e devolve 200 vazio) e usa `validateStatus: () => true` para não lançar nessas respostas. É o próprio interceptor de sucesso (`onResponse`) que lê o envelope JSON quando o content-type é `application/json` e, numa falha semântica 401, repete a chamada com o token renovado antes de devolver a resposta para quem chamou; `onResponseError` só rejeita, sem participar desse fluxo.
 
 ## AuthHelpers
 
@@ -169,6 +171,160 @@ A sessão autenticada alimenta a camada de autorização. O `currentUser` expost
 ## Autenticação em componentes de formulário
 
 Componentes de tela consomem o estado global de autenticação para tomar decisões de acesso, personalização e exibição de informações do usuário. O `AuthContext` centraliza esse fluxo e evita leitura direta de storage nos componentes.
+
+## Módulo de Códigos de Barras de Produto
+
+O módulo de autenticação é consumido por páginas protegidas, e a área de cadastro de produtos usa o mesmo padrão de estado centralizado para carregar dados vinculados ao usuário autenticado. No fluxo de produto, o sistema trabalha com uma coleção de códigos de barras em `ProductDto.barcodes`, com identificação de código principal, tipo do código e validações específicas.
+
+### Componentes Principais
+
+| Arquivo | Responsabilidade |
+|---------|-----------------|
+| `src/app/pages/catalog/product/components/ProductGeneralSection.tsx` | Seção geral do formulário de produto com `BarcodeSection` |
+| `src/app/pages/catalog/product/components/BarcodeSection.tsx` | Campo principal de código de barras e acesso ao modal de gerenciamento |
+| `src/app/pages/catalog/product/modal/barcode-management/BarcodeManagementModal.tsx` | Modal de listagem e edição dos códigos de barras do produto |
+| `src/app/pages/catalog/product/modal/barcode-management/BarcodeForm.tsx` | Formulário de inclusão/edição de um código de barras |
+| `src/app/pages/catalog/product/modal/barcode-management/BarcodeListItem.tsx` | Item visual da lista de códigos |
+| `src/app/pages/catalog/product/modal/barcode-management/_useGtinValidation.ts` | Validação remota de GTIN com consulta por código |
+| `src/app/pages/catalog/product/core/_validation.ts` | Schema Yup do formulário de produto |
+
+### Estrutura de Dados
+
+O formulário de produto passa a trabalhar com `barcodes` como lista de `ProductBarcodeDto`.
+
+| Campo | Tipo | Responsabilidade |
+|-------|------|-----------------|
+| `gtin` | string | Código de barras ou código interno, dependendo do tipo |
+| `type` | `EnumType` | Tipo do código de barras |
+| `primary` | boolean | Indica o código principal do produto |
+| `id` | string/number | Identificador persistido do registro, quando existente |
+
+### Fluxo do Formulário de Produto
+
+1. `ProductGeneralSection` renderiza `BarcodeSection`.
+2. `BarcodeSection` usa `getPrimaryBarcode(formik.values.barcodes)` para exibir o código principal no `GtinEanInput`.
+3. Ao digitar ou pesquisar um código, `handlePrimaryGtinChange` e `handleSearchResult` atualizam o primeiro item marcado como `primary`.
+4. O botão **Gerenciar códigos** abre `BarcodeManagementModal`.
+5. O modal carrega os códigos em `barcodeList`, permite inclusão, edição, remoção e definição do principal.
+6. Ao salvar, `BarcodeManagementModal` retorna a lista completa para o `Formik` do produto via `onSave`.
+
+### BarcodeSection
+
+O componente `BarcodeSection` encapsula o input principal de código de barras e o acesso ao gerenciamento completo dos códigos.
+
+| Prop | Tipo | Responsabilidade |
+|------|------|-----------------|
+| `formik` | `FormikProps<ProductDto>` | Estado e validação do formulário de produto |
+| `showSearchButton` | `boolean` | Exibe o botão de busca no `GtinEanInput` |
+| `triggerSearchOnMount` | `boolean` | Dispara busca no carregamento do componente |
+| `onSearchResult` | função | Recebe o resultado da busca remota por GTIN |
+
+#### Comportamento
+
+- Lê o código principal com `getPrimaryBarcode`.
+- Mostra badge com a quantidade de códigos secundários quando há mais de um item.
+- Ao perder foco, emite `SystemNotification.warning` quando o código principal tem aparência de GTIN dinâmico.
+- Exibe mensagens de erro vindas de `formik.errors.barcodes`.
+
+### BarcodeManagementModal
+
+O modal de gerenciamento centraliza a lista de códigos do produto.
+
+| Prop | Tipo | Responsabilidade |
+|------|------|-----------------|
+| `show` | `boolean` | Controla a visibilidade do modal |
+| `barcodes` | `ProductBarcodeDto[]` | Lista recebida do formulário principal |
+| `onClose` | função | Fecha o modal |
+| `onSave` | função | Retorna a lista final de códigos |
+
+#### Ações Disponíveis
+
+| Ação | Resultado |
+|------|-----------|
+| Adicionar código | Abre `BarcodeForm` com um registro vazio |
+| Editar | Carrega os dados do item selecionado no formulário |
+| Definir como principal | Marca o item selecionado como `primary` e remove a marcação dos demais |
+| Remover | Remove o item da lista quando não é o principal |
+| Salvar | Envia a lista atualizada ao `Formik` do produto |
+
+### BarcodeForm
+
+O formulário de código de barras trata tanto códigos estáticos quanto dinâmicos.
+
+| Prop | Tipo | Responsabilidade |
+|------|------|-----------------|
+| `initialValues` | `ProductBarcodeDto` | Valores iniciais do formulário |
+| `editingIndex` | `number \| null` | Índice do item em edição |
+| `existingBarcodes` | `ProductBarcodeDto[]` | Lista usada para validação de duplicidade |
+| `disablePrimaryToggle` | `boolean` | Bloqueia a opção de marcar como principal |
+| `onSubmit` | função | Confirma o registro do código |
+| `onCancel` | função | Cancela a edição |
+
+#### Regras de UI e validação
+
+| Regra | Descrição |
+|-------|-------------|
+| Tipo dinâmico | Exibe banner informativo quando o tipo indica código dinâmico |
+| Código interno | Para tipos dinâmicos, o campo trabalha como `Código interno` |
+| Duplicidade | O GTIN não pode repetir outro código da mesma lista |
+| Código de produto vinculado | `useGtinValidation()` consulta a API e sinaliza quando o código pertence a outro produto |
+| Extração de código interno | Para códigos dinâmicos, `extractInternalCode()` normaliza o valor salvo |
+
+### BarcodeListItem
+
+Cada item da lista exibe o código, o tipo e o estado principal.
+
+| Elemento | Comportamento |
+|----------|---------------|
+| Código | Mostra `gtin` ou `Cód. interno: gtin` quando o tipo é dinâmico |
+| Badge de tipo | Usa `getTypeBadgeClass(barcode.type)` |
+| Badge principal | Exibe ícone de estrela quando `primary` é `true` |
+| Botão principal | Define o item como principal |
+| Botão editar | Abre o formulário com os dados do item |
+| Botão remover | Remove o item, respeitando as regras de proteção do principal |
+
+### Validação de Produto
+
+O schema `productFormSchema` valida a coleção de códigos em `barcodes`.
+
+| Campo | Validação |
+|-------|-----------|
+| `barcodes` | array obrigatório com pelo menos um item |
+| `barcodes[].gtin` | obrigatório |
+| `barcodes[].type` | obrigatório |
+| `barcodes[].primary` | booleano |
+
+### Fluxo de Busca por GTIN
+
+O componente `GtinEanInput` é usado para consulta de produto por código de barras.
+
+1. O usuário informa um código.
+2. O componente dispara a busca remota.
+3. O retorno é tratado em `handleSearchResult`.
+4. O código encontrado atualiza:
+   - o item principal em `barcodes`
+   - `sku`
+   - `description`
+   - `brand`
+   - demais campos derivados do retorno da API
+
+### useGtinValidation
+
+O hook `useGtinValidation` usa `@tanstack/react-query` para consultar o backend por um GTIN informado.
+
+| Estado/ação | Responsabilidade |
+|-------------|-----------------|
+| `validate(gtin)` | Inicia a consulta por código |
+| `error` | Mensagem de validação exibida no formulário |
+| `setError()` | Define mensagens de erro específicas |
+| `clear()` | Remove erro e cancela a consulta corrente |
+
+Se a API retorna um produto, o formulário exibe a mensagem:
+
+| Situação | Mensagem |
+|----------|-----------|
+| GTIN localizado | `Este código pertence ao produto: <nome>` |
+| GTIN inexistente/erro | Sem mensagem de bloqueio |
 
 ## Logout
 
@@ -308,6 +464,152 @@ A autenticação também governa:
 - acesso a telas de Preferências, Relatórios, Suprimentos, Financeiro, Notificações e Espaço do Contador/Gestor;
 - ações de formulário, como criação de marcadores, lotes, ajustes de estoque, importação de NFe e execução de operações de picklist;
 - exibição de botões e menus contextuais em tabelas e modais.
+
+### Inventário de Suprimentos
+
+Na página `SupplyInventoryProductPage`, a autenticação e a autorização definem as ações disponíveis sobre os alertas de inventário. O componente processa `ProductInventoryAlertDto` e usa `alert.action_type?.value` para decidir qual fluxo de interface é permitido.
+
+#### Componentes e responsabilidades
+
+| Arquivo | Responsabilidade |
+|---------|-----------------|
+| `src/app/pages/supply/inventory/SupplyInventoryProductPage.tsx` | Orquestra o fluxo de alertas de inventário e os modais acionados pelas ações do alerta |
+| `src/app/pages/supply/inventory/components/AlertsPanel.tsx` | Renderiza a lista de alertas e controla a liberação das ações por permissão |
+
+#### Estrutura do alerta
+
+| Campo | Tipo | Descrição |
+|-------|------|-------------|
+| `alert.type.value` | string | Tipo visual do alerta, usado para definir a variante de exibição |
+| `alert.action_type?.value` | string \| undefined | Tipo da ação executável associada ao alerta |
+| `alert.action_type?.value === 'NAVIGATE_BATCH'` | ação | Navega para o fluxo de lote |
+| `alert.action_type?.value === 'NAVIGATE_DEPOSIT'` | ação | Navega para o fluxo de depósito, com controle por permissão |
+| `alert.action_type?.value === 'CREATE_ORDER'` | ação | Abre o fluxo de criação de ordem de compra, com controle por permissão |
+
+#### Fluxo de renderização em `AlertsPanel`
+
+1. O componente percorre `alerts` com `map`.
+2. A variante visual é obtida por `ALERT_VARIANT_MAP[alert.type.value]`.
+3. A ação executável é lida por `alert.action_type?.value`.
+4. O cálculo de `canAct` verifica:
+   - `NAVIGATE_BATCH` sem exigência adicional;
+   - `NAVIGATE_DEPOSIT` com `ability.can('access', PERMISSIONS.SUPRIMENTOS_AJUSTES_DE_ESTOQUE)`;
+   - `CREATE_ORDER` com `ability.can('access', PERMISSIONS.SUPRIMENTOS_ORDEMS_DE_COMPRA)`.
+5. Quando `canAct` é verdadeiro, o alerta exibe a ação correspondente na interface.
+
+#### Fluxo de ação em `SupplyInventoryProductPage`
+
+O handler `handleAlertAction(alert: ProductInventoryAlertDto)` trata a ação executável do alerta a partir de `alert.action_type?.value`.
+
+| Ação | Comportamento |
+|------|---------------|
+| `NAVIGATE_DEPOSIT` | Define `setAddEntryInitialType('BALANCE')` e abre o modal de inclusão |
+| `NAVIGATE_BATCH` | Dispara o fluxo de navegação relacionado ao lote |
+| `CREATE_ORDER` | Encaminha para a criação de ordem de compra, conforme a regra de navegação da tela |
+
+#### Integração com permissões
+
+| Permissão | Uso |
+|-----------|-----|
+| `PERMISSIONS.SUPRIMENTOS_AJUSTES_DE_ESTOQUE` | Libera ações relacionadas a depósito e ajuste de estoque |
+| `PERMISSIONS.SUPRIMENTOS_ORDEMS_DE_COMPRA` | Libera ações relacionadas à criação de ordem de compra |
+
+## Fluxo de Separação de Picklist
+
+A tela de separação de picklist usa a autenticação para identificar o operador e controla a confirmação de quantidades por item em uma tarefa de separação. O estado da página mantém quantidades não confirmadas no cliente até o envio explícito da linha selecionada.
+
+### Arquivos Principais
+
+| Arquivo | Responsabilidade |
+|---------|-----------------|
+| `src/app/pages/supply/picklist/PicklistSeparationPage.tsx` | Página de separação de picklist, tabela e ações por linha |
+| `src/app/pages/supply/picklist/components/QuantityInput.tsx` | Campo numérico usado para ajustar quantidades |
+| `src/app/pages/supply/picklist/core/_utils.ts` | Funções utilitárias para cálculo e limpeza de quantidades exibidas |
+| `src/app/pages/supply/picklist/core/_requests.ts` | Requisições de detalhe, histórico e edição de itens |
+
+### Estado Local da Página
+
+| Estado | Tipo | Responsabilidade |
+|--------|------|-----------------|
+| `unconfirmedQuantities` | `Record<string, number>` | Quantidades ajustadas no cliente e ainda não confirmadas |
+| `lastFocusedRow` | `string \| null` | Identificador da última linha com foco |
+| `mutatingItemId` | `string \| null` | Identificador do item em envio para a API |
+| `isFinishSeparateModalVisible` | `boolean` | Controle do modal de encerramento da separação |
+
+### Funções Utilitárias
+
+| Função | Responsabilidade |
+|--------|-----------------|
+| `getDefaultQuantity(item)` | Calcula a quantidade base exibida para um item da separação |
+| `getDisplayedQuantity(item, unconfirmedQuantities)` | Retorna a quantidade exibida considerando o estado local |
+| `discardSavedQuantities(prev, items)` | Remove do estado local os itens já confirmados na origem |
+
+### Fluxo de Dados da Tabela
+
+1. `useQuery` carrega os detalhes da tarefa com `getTaskSeparationDetails`.
+2. `handleDataChange` recebe a lista de itens da tarefa e limpa quantidades já confirmadas no estado local.
+3. A coluna de quantidade usa `getDisplayedQuantity(row.original, unconfirmedQuantities)` para exibir o valor em edição.
+4. `QuantityInput` atualiza `unconfirmedQuantities` somente quando a interação parte da digitação do usuário.
+5. Um badge `Não confirmado` aparece quando a quantidade exibida difere da quantidade base do item.
+6. O botão de confirmação envia a linha com a quantidade exibida no momento da ação.
+
+### Coluna de Quantidade
+
+O campo de quantidade é renderizado em um bloco vertical com o input e um indicador visual de confirmação pendente.
+
+| Elemento | Responsabilidade |
+|----------|-----------------|
+| `QuantityInput` | Permite incremento, decremento e digitação livre |
+| Badge `Não confirmado` | Indica divergência entre o valor exibido e a base da tarefa |
+
+### Coluna de Ação
+
+A ação de separar usa a quantidade exibida no momento do clique.
+
+| Condição | Comportamento |
+|----------|---------------|
+| `item.completed === false` | Exibe botão de confirmação |
+| `quantity !== getDefaultQuantity(item)` | Exibe botão de confirmação |
+| `separateItemMutation.isPending` | Mostra estado de carregamento no botão da linha ativa |
+
+### `QuantityInput`
+
+O componente `QuantityInput` encapsula o campo numérico com botões de incremento e decremento e usa `react-number-format` para leitura formatada do valor.
+
+| Prop | Tipo | Responsabilidade |
+|------|------|-----------------|
+| `quantity` | `number` | Valor exibido no input |
+| `onChange` | função | Recebe o valor numérico digitado |
+| `onIncrement` | função | Incrementa a quantidade |
+| `onDecrement` | função | Decrementa a quantidade |
+| `onFocus` | função | Registra a linha focada |
+| `inputRef` | `ref` | Acesso direto ao elemento HTML do input |
+
+#### Comportamento de Entrada
+
+| Regra | Descrição |
+|-------|-------------|
+| Digitação | Atualiza a quantidade somente quando o evento é disparado por interação do usuário |
+| Integração com `NumericFormat` | `onValueChange` lê `event` para evitar propagação de mudanças originadas por atualização de prop |
+| Seleção ao focar | O componente mantém o foco operacional da linha durante a edição |
+
+### Integração com a tarefa
+
+A página de separação usa `editSeparationTaskItem` para enviar o item com a quantidade exibida no momento da confirmação. O fluxo preserva o estado visual do usuário até que a linha seja submetida para a API.
+
+### Estrutura da quantidade exibida
+
+| Origem | Uso |
+|--------|-----|
+| Quantidade base da tarefa | Referência inicial para exibição |
+| `unconfirmedQuantities` | Sobrescreve o valor mostrado no campo enquanto o operador edita |
+| Quantidade enviada | Valor presente em `quantity` no item submetido |
+
+## Confirmação pública de cadastro
+
+A tela de confirmação de cadastro (`CustomerRegistrationConfirmationPage`) roda fora da autenticação do admin; a rota está documentada em [Roteamento](/arquitetura/roteamento/).
+
+Ela confirma um cadastro de cliente feito no EasyPDV Touch, quando o cliente recebe o link por SMS. Ao abrir, consulta só `GET /public/customer-registration/{token}`; o `POST /public/customer-registration/{token}/confirm` só sai do clique em Confirmar, porque os aplicativos de SMS e WhatsApp abrem o link sozinhos para gerar a prévia. Essas rotas ficam na raiz da API, fora do prefixo `/admin` da `baseURL` padrão do client. Quando a consulta já retorna o cadastro confirmado ou expirado, a tela mostra a mensagem correspondente sem precisar do clique; um token desconhecido (HTTP 404) mostra o mesmo texto do link expirado, e o erro da confirmação (HTTP 409) mostra a mensagem do envelope.
 
 ## Veja Também
 

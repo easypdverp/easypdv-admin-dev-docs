@@ -146,6 +146,13 @@ class ApiResponseError {
 }
 ```
 
+`getErrorMessage()` prioriza a `message` do topo do envelope (usada em conflitos de negócio, como "A nota fiscal já está nessa situação"). Na ausência dela, concatena os erros de `error` (um por campo, separados por `; `) decidindo, para cada um, se prefixa com o nome do campo:
+
+- Mensagem começando com minúscula: é a mensagem genérica da validação do Bean Validation (ex.: "não deve ser nulo"), que não diz qual campo falhou — o helper `describeFieldError` prefixa com `{field}: `, resultando em `"status: não deve ser nulo"`.
+- Mensagem começando com maiúscula: já foi escrita para o usuário final (ex.: "Selecione ao menos uma linha para exportar") e é mantida sem o prefixo do campo.
+
+Os testes em `src/api/core/_models.test.ts` cobrem esses casos, incluindo a concatenação de vários erros de campo.
+
 ## Padrão de Endpoints
 
 Cada entidade tem seu próprio arquivo em `src/api/endpoints/` com constantes de URL da API:
@@ -200,6 +207,14 @@ O padrão segue a convenção:
 - `{ENTITY}_EDIT_PAGE_URL(id)` — edição
 - `{ENTITY}_DETAIL_PAGE_URL(id)` — detalhe
 - `{ENTITY}_REMOVE_PAGE_URL(id)` — modal de remoção
+
+A tela de Preferências › Empresas segue essa mesma convenção de lista/criação/edição, no lugar de uma única página de detalhe:
+
+```ts
+export const COMPANY_LIST_PAGE_URL = '/preferencias/empresas/lista';
+export const COMPANY_NEW_PAGE_URL = '/preferencias/empresas/novo';
+export const COMPANY_EDIT_PAGE_URL = (id: string) => `/preferencias/empresas/edita/${id}`;
+```
 
 ## Adicionando um Novo Endpoint
 

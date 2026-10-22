@@ -10,9 +10,9 @@ sidebar:
 | Tecnologia | Versão | Função |
 |-----------|--------|--------|
 | React | 18.2 | UI framework |
-| TypeScript | 5.7 | Tipagem estática |
-| Vite | 4.4.5 | Build tool e dev server |
-| React Router DOM | 6.3 | Roteamento client-side |
+| TypeScript | 6.0 | Tipagem estática |
+| Vite | 8.1.4 | Build tool e dev server |
+| React Router DOM | 7.18 | Roteamento client-side |
 
 ## UI e Estilo
 
@@ -21,23 +21,23 @@ sidebar:
 | React Bootstrap | 2.5 | Componentes UI baseados em Bootstrap 5.3 |
 | Styled Components | 6.1 | CSS-in-JS |
 | Metronic | — | Template de UI administrativo (base de layout) |
-| Bootstrap Icons | — | Ícones |
+| Bootstrap Icons | 1.5 | Ícones |
 | Font Awesome | 7.0 | Ícones |
 
 ## Estado e Dados
 
 | Biblioteca | Versão | Função |
 |-----------|--------|--------|
-| React Query (TanStack) | 3.38 | Server state, cache e sincronização |
-| Axios | 1.7 | HTTP client com interceptors |
+| React Query (TanStack) | 5.101 | Server state, cache e sincronização |
+| Axios | 1.16 | HTTP client com interceptors |
 | nuqs | 2.7 | Estado em URL (query strings) |
 
 ## Formulários e Validação
 
 | Biblioteca | Versão | Função |
 |-----------|--------|--------|
-| Formik | 2.2 | Gerenciamento de formulários |
-| Yup | — | Validação de schemas |
+| Formik | 2.4 | Gerenciamento de formulários |
+| Yup | 1.0 | Validação de schemas |
 
 ## Tabelas
 
@@ -63,7 +63,7 @@ sidebar:
 
 | Biblioteca | Versão | Função |
 |-----------|--------|--------|
-| ApexCharts + react-apexcharts | 3.35 | Gráficos interativos (herdado do Metronic) |
+| ApexCharts + react-apexcharts | 5.3 | Gráficos interativos (herdado do Metronic) |
 | Chart.js + react-chartjs-2 | 4.5 | Gráficos primários da aplicação |
 | Leaflet + react-leaflet | 1.9 | Mapas interativos |
 | @react-google-maps/api | 2.20 | Integração Google Maps |
@@ -75,14 +75,14 @@ Para detalhes de integração de cada biblioteca, veja [Integrações](/modulos/
 
 | Biblioteca | Versão | Função |
 |-----------|--------|--------|
-| jsPDF + jspdf-autotable | — | Geração de PDFs |
+| jsPDF + jspdf-autotable | 3.0 | Geração de PDFs |
 | XLSX | 0.18 | Exportação para Excel |
 
 ## Internacionalização
 
 | Biblioteca | Versão | Função |
 |-----------|--------|--------|
-| react-intl | 6.4 | i18n com mensagens formatadas |
+| react-intl | 10.1 | i18n com mensagens formatadas |
 
 ## Utilitários
 
@@ -93,9 +93,35 @@ Para detalhes de integração de cada biblioteca, veja [Integrações](/modulos/
 | @dnd-kit | 6.3 | Drag-and-drop (reordenação de colunas no ExportModal) |
 | jsbarcode | 3.12 | Geração de códigos de barras |
 | react-toastify | 11.0 | Notificações toast |
-| react-dropzone | 14.2 | Upload de arquivos via drag-and-drop |
 | react-select | 5.8 | Select avançado com busca |
 | react-number-format | 5.4 | Formatação de inputs numéricos |
 | lz-string | 1.5 | Compressão de strings (cache de filtros) |
 
 Para detalhes sobre hooks customizados que encapsulam essas bibliotecas, veja [Hooks Customizados](/modulos/hooks/).
+
+## Testes
+
+| Biblioteca | Versão | Função |
+|-----------|--------|--------|
+| Vitest | 4.1 | Test runner, ambiente `happy-dom` |
+| @vitest/coverage-v8 | 4.1 | Cobertura de testes |
+| @testing-library/react | 16.3 | Renderização de componentes em teste |
+| @testing-library/user-event | 14.6 | Simulação de interação do usuário |
+| @testing-library/jest-dom | 6.6 | Matchers de DOM |
+| MSW | 2.13 | Mock de requisições HTTP em teste |
+
+`npm run test:run` roda a suíte uma vez (modo watch: `npm test`; com cobertura: `npm run test:coverage`).
+
+## Qualidade de Código
+
+| Biblioteca | Versão | Função |
+|-----------|--------|--------|
+| ESLint | 9.39 | Lint, com configuração flat (`eslint.config.js`) |
+| typescript-eslint | 8.67 | Regras de lint com tipos |
+| eslint-plugin-react / react-hooks / react-refresh | 7.37 / 7.1 / 0.4 | Regras de React |
+| eslint-plugin-unused-imports | 4.4 | Remove imports não usados |
+| eslint-plugin-jsx-a11y | 6.10 | Regras de acessibilidade |
+| eslint-plugin-sonarjs | 4.2 | Regras do Sonar replicadas no lint local |
+| eslint-plugin-unicorn | 65.0 | Boas práticas gerais de JS/TS |
+
+`npm run eslint` reprova com erro de regra e com uma supressão órfã em `eslint-suppressions.json` — o arquivo nativo do ESLint (desde a 9.24) que anistia as violações legadas das regras mais novas, com a garantia de que só encolhe: uma entrada sem violação correspondente reprova o lint. `npm run lint` roda o ESLint e o `tsc` (`npm run check-types`).

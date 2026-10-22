@@ -71,7 +71,38 @@ const columns = [
 ];
 ```
 
+## Exportação
+
+Com `isExportable`, a `DataTable` oferece o botão **Exportar** (veja [Exportação](/modulos/exportacao/)). A prop `exportScopes?: ExportScopeType[]` lista as formas de exportação que a tela oferece — a primeira da lista vem marcada no modal; sem a prop, o modal oferece todas as que as linhas permitem. `ExportScopeType` (`src/app/enums/ExportScopeType.ts`) tem os valores `ALL`, `PAGE` e `SELECTED`. A prop só vale para a exportação pelo backend (`exportEndpoint`); sem ele, no caminho em memória, `exportScopes` não tem efeito.
+
+```ts
+// src/app/modules/table/DataTable.tsx
+exportScopes?: ExportScopeType[];
+```
+
+## Menu de linha
+
+O menu de ações de uma linha (`RowMenuDropdown`, em `src/app/modules/widgets/Dropdown/RowMenuDropdown.tsx`) recebe uma lista de `RowMenuDropdownAction`. Para o separador entre grupos de ações, a tela chama `rowMenuSeparator()`, exportado do mesmo arquivo, em vez de escrever o objeto do separador:
+
+```ts
+// src/app/modules/widgets/Dropdown/RowMenuDropdown.tsx
+export const rowMenuSeparator = (): RowMenuDropdownAction => ({ type: 'separator' });
+```
+
+```tsx
+import RowMenuDropdown, { rowMenuSeparator } from '../../../modules/widgets/Dropdown/RowMenuDropdown';
+
+<RowMenuDropdown
+  actions={[
+    { label: 'Editar', onClick: handleEdit },
+    rowMenuSeparator(),
+    { label: 'Excluir', onClick: handleDelete },
+  ]}
+/>
+```
+
 ## Veja Também
 
+- [Exportação](/modulos/exportacao/) — Escopos de linha, cabeçalho do arquivo e exemplos de exportação pelo backend
 - [Hooks Customizados](/modulos/hooks/) — Detalhes do `useDataTableCleanup` e outros hooks de tabela
 - [Filtros por URL](/funcionalidades/filtros-url/) — Persistência de filtros na URL com nuqs

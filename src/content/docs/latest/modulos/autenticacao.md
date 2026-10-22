@@ -53,9 +53,11 @@ O interceptor de requisição lê `getAuth()` e monta `Authorization` com `auth.
 
 Respostas binárias retornam dados crus. Uma resposta JSON em uma chamada de streaming é lida como `ApiResponse` para preservar o tratamento de falhas e refresh. O código completo está em [API e Endpoints](/latest/arquitetura/api-endpoints/).
 
-### SSE de notificações
+### SSE de notificações e do chat
 
-`getFreshToken()` verifica a expiração com margem de 10 segundos e renova o token quando necessário. O módulo de notificações chama esse helper antes de abrir o `EventSource` com `?token=...`; o token enviado na URL não passa pelo interceptor de requisição do Axios.
+`getFreshToken()` verifica a expiração do token com margem de 10 segundos e renova pelo mesmo `refreshPromise` compartilhado quando necessário; um token que o `jwtDecode` não lê é tratado como vencido. O módulo de notificações chama esse helper antes de abrir o `EventSource` com `?token=...`, a cada (re)conexão, porque o backend só valida o token na abertura do stream e o token enviado na URL não passa pelo interceptor de requisição do Axios.
+
+O chat do agente usa outro caminho: o pedido ao stream aceita `text/event-stream` e `application/json` (sem isso o backend não serializa o envelope de erro e devolve 200 vazio) e usa `validateStatus: () => true` para não lançar nessas respostas. É o próprio interceptor de sucesso (`onResponse`) que lê o envelope JSON quando o content-type é `application/json` e, numa falha semântica 401, repete a chamada com o token renovado antes de devolver a resposta para quem chamou; `onResponseError` só rejeita, sem participar desse fluxo.
 
 ## AuthHelpers
 
@@ -169,6 +171,160 @@ A sessão autenticada alimenta a camada de autorização. O `currentUser` expost
 ## Autenticação em componentes de formulário
 
 Componentes de tela consomem o estado global de autenticação para tomar decisões de acesso, personalização e exibição de informações do usuário. O `AuthContext` centraliza esse fluxo e evita leitura direta de storage nos componentes.
+
+## Módulo de Códigos de Barras de Produto
+
+O módulo de autenticação é consumido por páginas protegidas, e a área de cadastro de produtos usa o mesmo padrão de estado centralizado para carregar dados vinculados ao usuário autenticado. No fluxo de produto, o sistema trabalha com uma coleção de códigos de barras em `ProductDto.barcodes`, com identificação de código principal, tipo do código e validações específicas.
+
+### Componentes Principais
+
+| Arquivo | Responsabilidade |
+|---------|-----------------|
+| `src/app/pages/catalog/product/components/ProductGeneralSection.tsx` | Seção geral do formulário de produto com `BarcodeSection` |
+| `src/app/pages/catalog/product/components/BarcodeSection.tsx` | Campo principal de código de barras e acesso ao modal de gerenciamento |
+| `src/app/pages/catalog/product/modal/barcode-management/BarcodeManagementModal.tsx` | Modal de listagem e edição dos códigos de barras do produto |
+| `src/app/pages/catalog/product/modal/barcode-management/BarcodeForm.tsx` | Formulário de inclusão/edição de um código de barras |
+| `src/app/pages/catalog/product/modal/barcode-management/BarcodeListItem.tsx` | Item visual da lista de códigos |
+| `src/app/pages/catalog/product/modal/barcode-management/_useGtinValidation.ts` | Validação remota de GTIN com consulta por código |
+| `src/app/pages/catalog/product/core/_validation.ts` | Schema Yup do formulário de produto |
+
+### Estrutura de Dados
+
+O formulário de produto passa a trabalhar com `barcodes` como lista de `ProductBarcodeDto`.
+
+| Campo | Tipo | Responsabilidade |
+|-------|------|-----------------|
+| `gtin` | string | Código de barras ou código interno, dependendo do tipo |
+| `type` | `EnumType` | Tipo do código de barras |
+| `primary` | boolean | Indica o código principal do produto |
+| `id` | string/number | Identificador persistido do registro, quando existente |
+
+### Fluxo do Formulário de Produto
+
+1. `ProductGeneralSection` renderiza `BarcodeSection`.
+2. `BarcodeSection` usa `getPrimaryBarcode(formik.values.barcodes)` para exibir o código principal no `GtinEanInput`.
+3. Ao digitar ou pesquisar um código, `handlePrimaryGtinChange` e `handleSearchResult` atualizam o primeiro item marcado como `primary`.
+4. O botão **Gerenciar códigos** abre `BarcodeManagementModal`.
+5. O modal carrega os códigos em `barcodeList`, permite inclusão, edição, remoção e definição do principal.
+6. Ao salvar, `BarcodeManagementModal` retorna a lista completa para o `Formik` do produto via `onSave`.
+
+### BarcodeSection
+
+O componente `BarcodeSection` encapsula o input principal de código de barras e o acesso ao gerenciamento completo dos códigos.
+
+| Prop | Tipo | Responsabilidade |
+|------|------|-----------------|
+| `formik` | `FormikProps<ProductDto>` | Estado e validação do formulário de produto |
+| `showSearchButton` | `boolean` | Exibe o botão de busca no `GtinEanInput` |
+| `triggerSearchOnMount` | `boolean` | Dispara busca no carregamento do componente |
+| `onSearchResult` | função | Recebe o resultado da busca remota por GTIN |
+
+#### Comportamento
+
+- Lê o código principal com `getPrimaryBarcode`.
+- Mostra badge com a quantidade de códigos secundários quando há mais de um item.
+- Ao perder foco, emite `SystemNotification.warning` quando o código principal tem aparência de GTIN dinâmico.
+- Exibe mensagens de erro vindas de `formik.errors.barcodes`.
+
+### BarcodeManagementModal
+
+O modal de gerenciamento centraliza a lista de códigos do produto.
+
+| Prop | Tipo | Responsabilidade |
+|------|------|-----------------|
+| `show` | `boolean` | Controla a visibilidade do modal |
+| `barcodes` | `ProductBarcodeDto[]` | Lista recebida do formulário principal |
+| `onClose` | função | Fecha o modal |
+| `onSave` | função | Retorna a lista final de códigos |
+
+#### Ações Disponíveis
+
+| Ação | Resultado |
+|------|-----------|
+| Adicionar código | Abre `BarcodeForm` com um registro vazio |
+| Editar | Carrega os dados do item selecionado no formulário |
+| Definir como principal | Marca o item selecionado como `primary` e remove a marcação dos demais |
+| Remover | Remove o item da lista quando não é o principal |
+| Salvar | Envia a lista atualizada ao `Formik` do produto |
+
+### BarcodeForm
+
+O formulário de código de barras trata tanto códigos estáticos quanto dinâmicos.
+
+| Prop | Tipo | Responsabilidade |
+|------|------|-----------------|
+| `initialValues` | `ProductBarcodeDto` | Valores iniciais do formulário |
+| `editingIndex` | `number \| null` | Índice do item em edição |
+| `existingBarcodes` | `ProductBarcodeDto[]` | Lista usada para validação de duplicidade |
+| `disablePrimaryToggle` | `boolean` | Bloqueia a opção de marcar como principal |
+| `onSubmit` | função | Confirma o registro do código |
+| `onCancel` | função | Cancela a edição |
+
+#### Regras de UI e validação
+
+| Regra | Descrição |
+|-------|-------------|
+| Tipo dinâmico | Exibe banner informativo quando o tipo indica código dinâmico |
+| Código interno | Para tipos dinâmicos, o campo trabalha como `Código interno` |
+| Duplicidade | O GTIN não pode repetir outro código da mesma lista |
+| Código de produto vinculado | `useGtinValidation()` consulta a API e sinaliza quando o código pertence a outro produto |
+| Extração de código interno | Para códigos dinâmicos, `extractInternalCode()` normaliza o valor salvo |
+
+### BarcodeListItem
+
+Cada item da lista exibe o código, o tipo e o estado principal.
+
+| Elemento | Comportamento |
+|----------|---------------|
+| Código | Mostra `gtin` ou `Cód. interno: gtin` quando o tipo é dinâmico |
+| Badge de tipo | Usa `getTypeBadgeClass(barcode.type)` |
+| Badge principal | Exibe ícone de estrela quando `primary` é `true` |
+| Botão principal | Define o item como principal |
+| Botão editar | Abre o formulário com os dados do item |
+| Botão remover | Remove o item, respeitando as regras de proteção do principal |
+
+### Validação de Produto
+
+O schema `productFormSchema` valida a coleção de códigos em `barcodes`.
+
+| Campo | Validação |
+|-------|-----------|
+| `barcodes` | array obrigatório com pelo menos um item |
+| `barcodes[].gtin` | obrigatório |
+| `barcodes[].type` | obrigatório |
+| `barcodes[].primary` | booleano |
+
+### Fluxo de Busca por GTIN
+
+O componente `GtinEanInput` é usado para consulta de produto por código de barras.
+
+1. O usuário informa um código.
+2. O componente dispara a busca remota.
+3. O retorno é tratado em `handleSearchResult`.
+4. O código encontrado atualiza:
+   - o item principal em `barcodes`
+   - `sku`
+   - `description`
+   - `brand`
+   - demais campos derivados do retorno da API
+
+### useGtinValidation
+
+O hook `useGtinValidation` usa `@tanstack/react-query` para consultar o backend por um GTIN informado.
+
+| Estado/ação | Responsabilidade |
+|-------------|-----------------|
+| `validate(gtin)` | Inicia a consulta por código |
+| `error` | Mensagem de validação exibida no formulário |
+| `setError()` | Define mensagens de erro específicas |
+| `clear()` | Remove erro e cancela a consulta corrente |
+
+Se a API retorna um produto, o formulário exibe a mensagem:
+
+| Situação | Mensagem |
+|----------|-----------|
+| GTIN localizado | `Este código pertence ao produto: <nome>` |
+| GTIN inexistente/erro | Sem mensagem de bloqueio |
 
 ## Logout
 
@@ -448,6 +604,12 @@ A página de separação usa `editSeparationTaskItem` para enviar o item com a q
 | Quantidade base da tarefa | Referência inicial para exibição |
 | `unconfirmedQuantities` | Sobrescreve o valor mostrado no campo enquanto o operador edita |
 | Quantidade enviada | Valor presente em `quantity` no item submetido |
+
+## Confirmação pública de cadastro
+
+A tela de confirmação de cadastro (`CustomerRegistrationConfirmationPage`) roda fora da autenticação do admin; a rota está documentada em [Roteamento](/arquitetura/roteamento/).
+
+Ela confirma um cadastro de cliente feito no EasyPDV Touch, quando o cliente recebe o link por SMS. Ao abrir, consulta só `GET /public/customer-registration/{token}`; o `POST /public/customer-registration/{token}/confirm` só sai do clique em Confirmar, porque os aplicativos de SMS e WhatsApp abrem o link sozinhos para gerar a prévia. Essas rotas ficam na raiz da API, fora do prefixo `/admin` da `baseURL` padrão do client. Quando a consulta já retorna o cadastro confirmado ou expirado, a tela mostra a mensagem correspondente sem precisar do clique; um token desconhecido (HTTP 404) mostra o mesmo texto do link expirado, e o erro da confirmação (HTTP 409) mostra a mensagem do envelope.
 
 ## Veja Também
 

@@ -144,6 +144,7 @@ const getFreshToken = async (): Promise<string | undefined> => {
 
 Essa leitura considera uma margem de 10 segundos para tolerar variações de relógio entre cliente e servidor.
 
+
 ### Response Interceptor
 
 Trata respostas com `success: false`, renova o token quando recebe status 401 e libera respostas binárias ou de streaming sem validar o envelope da API.
@@ -274,6 +275,14 @@ export const ProductEndpoints = {
 | `deleteBatch`       | string | Remocao em lote                          |
 | `toggleStatusBatch` | string | Ativar/desativar em lote                 |
 
+### Multiempresa
+
+Telas de listagem e de relatório que aceitam mais de uma empresa enviam o filtro `company_ids?: string[]` — um array de ids de empresa, não um `companyId` único.
+
+Já os endpoints de configuração ou status que pertencem a uma única empresa recebem o id dela como parâmetro de path, numa função `(companyId: string) => ...` — por exemplo `NfeConfigEndpoints.details(companyId)`, `CertificateConfigEndpoints.details(companyId)`, `NfeDistributionEndpoints.status(companyId)` e os `defaultSeriesNumber`/`defaultTransactionNature` de `NfceEndpoints`, `NfeInEndpoints` e `NfeOutEndpoints`.
+
+A lista completa dos `*FilterDto` que aceitam `company_ids` e os detalhes de `CompanySummaryDto` (a forma resumida do cadastro de empresa usada em `company?: CompanySummaryDto` nos DTOs de registro) estão em [Modelos e DTOs](/arquitetura/modelos-dtos/).
+
 ### Rotas de Navegacao
 
 O arquivo `src/api/core/links.ts` centraliza as rotas usadas na interface e na navegacao interna do ERP. Ele agrupa URLs por dominio e expõe constantes para telas de listagem, detalhe, edicao e configuracao.
@@ -294,47 +303,9 @@ O arquivo `src/api/core/links.ts` centraliza as rotas usadas na interface e na n
 | `TAX_SCENARIO_SETTINGS_PAGE_URL` | `/preferencias/cenario-fiscal` | Tela de configuracao de cenario fiscal |
 | `PAYMENT_GATEWAYS_LIST_PAGE_URL` | `/preferencias/financas/gateways-pagamento/lista` | Listagem de gateways de pagamento |
 
-#### Preferências Gerais e Empresas
-
-| Constante | Valor | Descricao |
-|-----------|-------|-----------|
-| `COMPANY_LIST_PAGE_URL` | `/preferencias/empresas/lista` | Listagem de empresas |
-| `COMPANY_NEW_PAGE_URL` | `/preferencias/empresas/novo` | Cadastro de empresa |
-| `COMPANY_EDIT_PAGE_URL(id)` | `/preferencias/empresas/edita/{id}` | Edição de empresa |
-
-#### Relatórios de Suprimentos, Vendas e Finanças
-
-| Constante | Valor | Descricao |
-|-----------|-------|-----------|
-| `PURCHASE_REQUIREMENT_PAGE_URL` | `/suprimentos/necessidade-compra` | Página de necessidade de compra |
-| `SUPPLY_REPORT_PAGE_URL` | `/relatorios/suprimentos` | Página principal de relatórios de suprimentos |
-| `SUPPLY_REPORT_STOCK_ENTRY_EXIT_PAGE_URL` | `/relatorios/suprimentos/estoque/entrada-saida` | Relatório de entrada e saída de estoque |
-| `SUPPLY_REPORT_STOCK_BALANCE_PAGE_URL` | `/relatorios/suprimentos/estoque/saldo` | Relatório de saldo de estoque |
-| `SUPPLY_REPORT_STOCK_NO_CIRCULATION_PAGE_URL` | `/relatorios/suprimentos/estoque/sem-circulacao` | Relatório de estoque sem circulação |
-| `SUPPLY_REPORT_STOCK_COST_OF_GOODS_SOLD_PAGE_URL` | `/relatorios/suprimentos/estoque/custo-mercadoria-vendida` | Relatório de custo da mercadoria vendida |
-| `SUPPLY_REPORT_ENTRY_NOTE_OPERATION_PAGE_URL` | `/relatorios/suprimentos/nota-de-entrada/operacao` | Relatório de operação de nota de entrada |
-| `SUPPLY_REPORT_ENTRY_NOTE_PRODUCT_SUPPLIER_PAGE_URL` | `/relatorios/suprimentos/nota-de-entrada/produto-fornecedor` | Relatório de produto por fornecedor |
-| `SUPPLY_REPORT_PURCHASE_ORDER_PAGE_URL` | `/relatorios/suprimentos/ordem-de-compra` | Relatório de ordem de compra |
-| `SUPPLY_REPORT_PRODUCT_LOSS_PAGE_URL` | `/relatorios/suprimentos/perda-produto` | Relatório de perda de produto |
-| `SUPPLY_REPORT_SHRINKAGE_PAGE_URL` | `/relatorios/suprimentos/quebra-acuracidade` | Relatório de quebra de acuracidade |
-| `SALES_REPORT_SALES_PAGE_URL` | `/relatorios/vendas/geral` | Relatório geral de vendas |
-| `SALES_REPORT_ABC_CURVE_PAGE_URL` | `/relatorios/vendas/curva-abc` | Relatório de curva ABC |
-| `SALES_REPORT_HOURLY_PAGE_URL` | `/relatorios/vendas/por-hora` | Relatório de vendas por hora |
-| `SALES_REPORT_PRODUCT_NOT_FOUND_PAGE_URL` | `/relatorios/vendas/produtos-nao-encontrados` | Relatório de códigos de barras não encontrados |
-| `SALES_REPORT_POINT_OF_SALE_CONVERSION_PAGE_URL` | `/relatorios/vendas/conversao-pdv` | Relatório de conversão de PDV |
-| `SALES_REPORT_INVOICE_PRODUCT_QUERY_PAGE_URL` | `/relatorios/vendas/nota-fiscal/consulta-produto` | Consulta de produto por nota fiscal |
-| `SALES_REPORT_INVOICE_OPERATION_PAGE_URL` | `/relatorios/vendas/nota-fiscal/operacao` | Relatório de operação fiscal |
-| `SALES_REPORT_INVOICE_CLIENT_PAGE_URL` | `/relatorios/vendas/nota-fiscal/cliente` | Relatório por cliente |
-| `SALES_REPORT_INVOICE_EVOLUTION_PAGE_URL` | `/relatorios/vendas/nota-fiscal/evolucao` | Relatório de evolução de notas fiscais |
-| `FINANCIAL_REPORT_PAGE_URL` | `/relatorios/financas` | Página principal de relatórios financeiros |
-| `FINANCIAL_REPORT_BALANCE_SHEET_PAGE_URL` | `/relatorios/financas/geral/saldos-por-conta` | Relatório de saldos por conta |
-| `FINANCIAL_REPORT_DRE_PAGE_URL` | `/relatorios/financas/geral/dre` | Relatório DRE |
-| `FINANCIAL_REPORT_POINT_OF_SALE_RESULT_PAGE_URL` | `/relatorios/financas/geral/resultado-por-pdv` | Relatório de resultado por PDV |
-| `FINANCIAL_REPORT_CASH_FLOW_PAGE_URL` | `/relatorios/financas/geral/fluxo-caixa` | Relatório de fluxo de caixa |
-
 ## Catalogo de Endpoints
 
-O catálogo documentado reúne **102 arquivos de endpoints** organizados em 11 domínios. A seguir, as propriedades de cada arquivo.
+O catálogo documentado reúne **104 arquivos de endpoints** organizados em 11 domínios. A seguir, as propriedades de cada arquivo.
 
 ### Auth (1 arquivo)
 
@@ -347,7 +318,7 @@ O catálogo documentado reúne **102 arquivos de endpoints** organizados em 11 d
 | AuthEndpoints | `resetPassword` | `/auth/reset-password` | Redefinição de senha |
 | AuthEndpoints | `googleLogin` | `/auth/google` | Login via Google |
 
-### Conta/Usuarios (6 arquivos)
+### Conta/Usuarios (5 arquivos)
 
 | Arquivo | Propriedade | Path | Descrição |
 |---------|-------------|------|-----------|
@@ -372,9 +343,6 @@ O catálogo documentado reúne **102 arquivos de endpoints** organizados em 11 d
 | AccountantManagementEndpoints | `toggleAccessStatus(id)` | `/accountant-management/access/status/{id}` | Ativar/desativar acesso do contador |
 | AccountantManagementEndpoints | `removeAccess(id)` | `/accountant-management/access/del/{id}` | Remover acesso do contador |
 | AccountantManagementEndpoints | `changePassword(id)` | `/accountant-management/access/change-password/{id}` | Alterar senha do contador |
-| AccountantEndpoints | `list` | `/preferences/accountant/list` | Listar contadores |
-| AccountantEndpoints | `create` | `/preferences/accountant/create` | Criar contador |
-| AccountantEndpoints | `edit(id)` | `/preferences/accountant/edit/{id}` | Editar contador |
 | ManagerManagementEndpoints | `listCommunities` | `/manager-management/communities/list` | Listar comunidades do gestor |
 | ManagerManagementEndpoints | `listPointsOfSale` | `/manager-management/pos/list` | Listar pontos de venda |
 | ManagerManagementEndpoints | `dashboardMetrics` | `/manager-management/dashboard/metrics` | Métricas do dashboard do gestor |
@@ -407,10 +375,10 @@ O catálogo documentado reúne **102 arquivos de endpoints** organizados em 11 d
 | ProductEndpoints | `add` | `/catalog/product/add` | Adicionar produto |
 | ProductEndpoints | `edit(id)` | `/catalog/product/edit/{id}` | Editar produto |
 | ProductEndpoints | `details(id)` | `/catalog/product/{id}` | Detalhes do produto |
+| ProductEndpoints | `priceHistory(id)` | `/catalog/product/{id}/price-history` | Histórico de preço do produto |
 | ProductEndpoints | `delete(id)` | `/catalog/product/del/{id}` | Excluir produto |
 | ProductEndpoints | `toggleStatus(id)` | `/catalog/product/status/{id}` | Ativar/desativar produto |
 | ProductEndpoints | `searchByGtinEan(gtinEan)` | `/catalog/product/lookup/{gtinEan}` | Buscar produto por GTIN/EAN |
-| ProductEndpoints | `priceHistory(id)` | `/catalog/product/{id}/price-history` | Histórico de preços do produto |
 | ProductEndpoints | `listByGtin` | `/catalog/product/list-gtin` | Listar produtos por GTIN |
 | ProductEndpoints | `listBatch` | `/catalog/product/list/batch` | Listar produtos em lote |
 | ProductEndpoints | `listBySku` | `/catalog/product/list-sku` | Listar produtos por SKU |
@@ -450,10 +418,10 @@ O catálogo documentado reúne **102 arquivos de endpoints** organizados em 11 d
 | ConversionUnitEndpoints | `toggleStatus(id)` | `/preferences/conversion-unit/status/{id}` | Ativar/desativar unidade |
 | ConversionUnitEndpoints | `deleteBatch` | `/preferences/conversion-unit/del/batch` | Excluir em lote |
 | ConversionUnitEndpoints | `toggleStatusBatch` | `/preferences/conversion-unit/status/batch` | Ativar/desativar em lote |
-| ProductSupplierEndpoints | `listBatch` | `/catalog/product/supplier/list/batch` | Listar fornecedores vinculados ao produto em lote |
-| ProductSupplierEndpoints | `priceHistory(id)` | `/catalog/product/supplier/{id}/price-history` | Histórico de preços por fornecedor |
+| ProductSupplierEndpoints | `listBatch` | `/catalog/product/supplier/list/batch` | Listar relações produto-fornecedor em lote |
+| ProductSupplierEndpoints | `priceHistory(id)` | `/catalog/product/supplier/{id}/price-history` | Histórico de preço do produto por fornecedor |
 
-### Vendas (8 arquivos)
+### Vendas (9 arquivos)
 
 | Arquivo | Propriedade | Path | Descrição |
 |---------|-------------|------|-----------|
@@ -467,20 +435,15 @@ O catálogo documentado reúne **102 arquivos de endpoints** organizados em 11 d
 | SaleOrderEndpoints | `nextSequenceNumber` | `/sales/sale-order/next-sequence` | Próximo número sequencial |
 | SaleOrderConfigEndpoints | `edit` | `/preferences/config/sale-order` | Editar configuração de pedidos |
 | SaleOrderConfigEndpoints | `details` | `/preferences/config/sale-order` | Detalhes da configuração |
-| SalesOrderReportEndpoints | `generateReport` | `/sales/reports/general` | Gerar relatório geral de pedidos |
-| SalesOrderReportEndpoints | `export` | `/sales/reports/general/export` | Exportar relatório geral de pedidos |
-| SalesOrderReportEndpoints | `abcCurve` | `/sales/reports/abc-curve` | Relatório de curva ABC |
+| SalesOrderReportEndpoints | `generateReport` | `/sales/reports/general` | Gerar relatorio de vendas, agrupado por produto, categoria, cliente, PDV, dia, mes, promocao ou cupom |
 | SalesOrderReportEndpoints | `abcCurveExport` | `/sales/reports/abc-curve/export` | Exportar curva ABC |
-| SalesOrderReportEndpoints | `pointOfSaleConversion` | `/sales/reports/point-of-sale-conversion/list` | Relatório de conversão de PDV |
-| SalesOrderReportEndpoints | `pointOfSaleConversionExport` | `/sales/reports/point-of-sale-conversion/export` | Exportar conversão de PDV |
+| SalesOrderReportEndpoints | `pointOfSaleConversion` | `/sales/reports/point-of-sale-conversion/list` | Relatorio de conversao do PDV (etapas do carrinho ate o pagamento) |
+| SalesOrderReportEndpoints | `pointOfSaleConversionExport` | `/sales/reports/point-of-sale-conversion/export` | Exportar conversao do PDV |
+| HourlySalesReportEndpoints | `generate` | `/sales/reports/hourly` | Relatorio de vendas por hora, na grade de dia da semana × hora |
 | SalesReportEndpoints | `invoiceProductQuery` | `/sales/reports/invoice/product-query` | Consulta de produtos por nota |
-| SalesReportEndpoints | `invoiceProductQueryExport` | `/sales/reports/invoice/product-query/export` | Exportar consulta de produtos por nota |
-| SalesReportEndpoints | `invoiceOperation` | `/sales/reports/invoice/operation` | Relatório de operações fiscais |
-| SalesReportEndpoints | `invoiceOperationExport` | `/sales/reports/invoice/operation/export` | Exportar operações fiscais |
-| SalesReportEndpoints | `invoiceCustomer` | `/sales/reports/invoice/customer` | Relatório por cliente |
-| SalesReportEndpoints | `invoiceCustomerExport` | `/sales/reports/invoice/customer/export` | Exportar relatório por cliente |
-| SalesReportEndpoints | `invoiceProgress` | `/sales/reports/invoice/progress` | Relatório de progresso fiscal |
-| SalesReportEndpoints | `invoiceProgressExport` | `/sales/reports/invoice/progress/export` | Exportar progresso fiscal |
+| SalesReportEndpoints | `invoiceOperation` | `/sales/reports/invoice/operation` | Relatorio de operacoes fiscais |
+| SalesReportEndpoints | `invoiceCustomer` | `/sales/reports/invoice/customer` | Relatorio por cliente |
+| SalesReportEndpoints | `invoiceProgress` | `/sales/reports/invoice/progress` | Relatorio de progresso fiscal |
 | SalesOccurrenceEndpoints | `list` | `/sales/occurrence/list` | Listar ocorrencias de venda |
 | SalesOccurrenceEndpoints | `add` | `/sales/occurrence/add` | Criar ocorrencia de venda |
 | SalesOccurrenceEndpoints | `edit(id)` | `/sales/occurrence/edit/{id}` | Editar ocorrencia de venda |
@@ -521,7 +484,7 @@ O catálogo documentado reúne **102 arquivos de endpoints** organizados em 11 d
 | CouponListEndpoints | `toggleStatus(id)` | `/sales/coupon/status/{id}` | Ativar/desativar cupom |
 | CouponListEndpoints | `usage(id)` | `/sales/coupon/usage/{id}` | Uso do cupom |
 
-### Financeiro (14 arquivos)
+### Financeiro (15 arquivos)
 
 | Arquivo | Propriedade | Path | Descrição |
 |---------|-------------|------|-----------|
@@ -543,11 +506,6 @@ O catálogo documentado reúne **102 arquivos de endpoints** organizados em 11 d
 | CashFlowEndpoints | `addCashFlowOut` | `/finance/cash-flow/out` | Lançamento de saída |
 | CashFlowEndpoints | `addCashFlowIn` | `/finance/cash-flow/in` | Lançamento de entrada |
 | CashFlowEndpoints | `addCashFlowBalance` | `/finance/cash-flow/balance` | Lançamento de saldo |
-| CommunitySettlementEndpoints | `list` | `/finance/community-settlement/list` | Listar acertos de comunidade |
-| CommunitySettlementEndpoints | `export` | `/finance/community-settlement/export` | Exportar acertos de comunidade |
-| CommunitySettlementEndpoints | `totals` | `/finance/community-settlement/totals` | Totais de acerto |
-| CommunitySettlementEndpoints | `chart` | `/finance/community-settlement/chart` | Gráfico de acertos |
-| CommunitySettlementEndpoints | `calculate` | `/finance/community-settlement/calculate` | Calcular acerto |
 | CompetenceEndpoints | `list` | `/finance/competence/list` | Listar competências |
 | CompetenceEndpoints | `details(id)` | `/finance/competence/{id}` | Detalhes da competência |
 | CompetenceEndpoints | `delete(id)` | `/finance/competence/del/{id}` | Excluir competência |
@@ -620,16 +578,27 @@ O catálogo documentado reúne **102 arquivos de endpoints** organizados em 11 d
 | ReceiptMethodEndpoints | `toggleStatus(id)` | `/preferences/receipt-method/status/{id}` | Ativar/desativar método |
 | ReceiptMethodEndpoints | `deleteBatch` | `/preferences/receipt-method/del/batch` | Excluir em lote |
 | ReceiptMethodEndpoints | `toggleStatusBatch` | `/preferences/receipt-method/status/batch` | Ativar/desativar em lote |
+| CommunitySettlementEndpoints | `list` | `/finance/community-settlement/list` | Listar repasses de comunidade |
+| CommunitySettlementEndpoints | `export` | `/finance/community-settlement/export` | Exportar repasses |
+| CommunitySettlementEndpoints | `totals` | `/finance/community-settlement/totals` | Totais dos repasses |
+| CommunitySettlementEndpoints | `chart` | `/finance/community-settlement/chart` | Gráfico dos repasses |
+| CommunitySettlementEndpoints | `calculate` | `/finance/community-settlement/calculate` | Calcular repasse |
+| CommunitySettlementEndpoints | `add` | `/finance/community-settlement/add` | Criar repasse |
+| CommunitySettlementEndpoints | `details(id)` | `/finance/community-settlement/{id}` | Detalhes do repasse |
+| CommunitySettlementEndpoints | `edit(id)` | `/finance/community-settlement/edit/{id}` | Editar repasse |
+| CommunitySettlementEndpoints | `close(id)` | `/finance/community-settlement/close/{id}` | Fechar repasse |
+| CommunitySettlementEndpoints | `reopen(id)` | `/finance/community-settlement/reopen/{id}` | Reabrir repasse |
+| CommunitySettlementEndpoints | `delete(id)` | `/finance/community-settlement/del/{id}` | Excluir repasse |
 | FinanceReportEndpoints | `balanceSheet` | `/finance/reports/balance-sheet` | Relatório de balanço |
-| FinanceReportEndpoints | `profitAndLoss` | `/finance/reports/profit-and-loss` | Relatório de lucros e perdas |
+| FinanceReportEndpoints | `profitAndLoss` | `/finance/reports/profit-and-loss` | Relatório de lucros e perdas (DRE), com comparativo mês a mês quando o filtro pede |
 | FinanceReportEndpoints | `cashFlow` | `/finance/reports/cash-flow` | Relatório de fluxo de caixa |
 | FinanceReportEndpoints | `byCategory` | `/finance/reports/by-category` | Relatório por categoria |
 | FinanceReportEndpoints | `byCustomer` | `/finance/reports/by-customer` | Relatório por cliente |
 | FinanceReportEndpoints | `payables` | `/finance/reports/payables` | Relatório de contas a pagar |
 | FinanceReportEndpoints | `receivables` | `/finance/reports/receivables` | Relatório de contas a receber |
-| FinanceReportEndpoints | `paymentsReceived` | `/finance/reports/payments-received` | Relatório de pagamentos recebidos |
-| FinanceReportEndpoints | `pointOfSaleResult` | `/finance/reports/point-of-sale-result/list` | Resultado por PDV |
-| FinanceReportEndpoints | `pointOfSaleResultExport` | `/finance/reports/point-of-sale-result/export` | Exportação do resultado por PDV |
+| FinanceReportEndpoints | `paymentsReceived` | `/finance/reports/payments-received` | Relatório de pagamentos recebidos, por forma de pagamento |
+| FinanceReportEndpoints | `pointOfSaleResult` | `/finance/reports/point-of-sale-result/list` | Relatório de resultado (margem de contribuição) por PDV |
+| FinanceReportEndpoints | `pointOfSaleResultExport` | `/finance/reports/point-of-sale-result/export` | Exportar resultado por PDV |
 
 ### Suprimentos/Estoque (19 arquivos)
 
@@ -666,18 +635,17 @@ O catálogo documentado reúne **102 arquivos de endpoints** organizados em 11 d
 | BuyOrderEndpoints | `add` | `/supply/buy-order/add` | Criar pedido de compra |
 | BuyOrderEndpoints | `edit(id)` | `/supply/buy-order/edit/{id}` | Editar pedido de compra |
 | BuyOrderEndpoints | `details(id)` | `/supply/buy-order/{id}` | Detalhes do pedido |
+| BuyOrderEndpoints | `exportOrder(id)` | `/supply/buy-order/{id}/export` | Gerar documento (PDF/outro formato) do pedido para envio ao fornecedor |
+| BuyOrderEndpoints | `emailDocument(id)` | `/supply/buy-order/{id}/export/email` | Enviar o documento do pedido por e-mail ao fornecedor |
+| BuyOrderEndpoints | `documentDetails(id, attachmentId)` | `/supply/buy-order/{id}/export/{attachmentId}` | Detalhes do documento gerado |
+| BuyOrderEndpoints | `documentFile(id, attachmentId)` | `/supply/buy-order/{id}/export/{attachmentId}/file` | Baixar o arquivo do documento gerado |
+| BuyOrderEndpoints | `generate` | `/supply/buy-order/generate` | Gerar pedidos de compra a partir da necessidade de compra |
 | BuyOrderEndpoints | `delete(id)` | `/supply/buy-order/del/{id}` | Excluir pedido |
 | BuyOrderEndpoints | `cancel(id)` | `/supply/buy-order/{id}/cancel` | Cancelar pedido |
 | BuyOrderEndpoints | `changeStatus(id)` | `/supply/buy-order/{id}/change-status` | Alterar status |
 | BuyOrderEndpoints | `nextSequenceNumber` | `/supply/buy-order/next-sequence` | Próximo número sequencial |
 | BuyOrderEndpoints | `approveBatch` | `/supply/buy-order/approve-batch` | Aprovar pedidos em lote |
 | BuyOrderEndpoints | `cancelBatch` | `/supply/buy-order/cancel-batch` | Cancelar pedidos em lote |
-| BuyOrderEndpoints | `export` | `/supply/buy-order/export` | Exportar pedido de compra |
-| BuyOrderEndpoints | `exportOrder(id)` | `/supply/buy-order/{id}/export` | Exportar ordem de compra |
-| BuyOrderEndpoints | `emailDocument(id)` | `/supply/buy-order/{id}/export/email` | Enviar documento por e-mail |
-| BuyOrderEndpoints | `documentDetails(id, attachmentId)` | `/supply/buy-order/{id}/export/{attachmentId}` | Detalhes do documento exportado |
-| BuyOrderEndpoints | `documentFile(id, attachmentId)` | `/supply/buy-order/{id}/export/{attachmentId}/file` | Arquivo do documento exportado |
-| BuyOrderEndpoints | `generate` | `/supply/buy-order/generate` | Gerar pedido de compra |
 | BuyOrderConfigEndpoints | `edit` | `/preferences/config/buy-order` | Editar configuração de compras |
 | BuyOrderConfigEndpoints | `details` | `/preferences/config/buy-order` | Detalhes da configuração |
 | PicklistEndpoints | `list` | `/supply/pick-list/list` | Listar picklists |
@@ -744,29 +712,19 @@ O catálogo documentado reúne **102 arquivos de endpoints** organizados em 11 d
 | SupplyCheckTaskEndpoints | `taskSupplyHistory(taskId)` | `/supply/task/supply-check/{taskId}/history` | Historico da tarefa |
 | SupplyCheckTaskEndpoints | `taskSupplyItemDetails(itemId)` | `/supply/task/supply-check/item/{itemId}` | Detalhes do item |
 | SupplyReportEndpoints | `inventoryInOut` | `/supply/reports/inventory/in-out` | Relatorio de entradas e saidas |
-| SupplyReportEndpoints | `inventoryInOutExport` | `/supply/reports/inventory/in-out/export` | Exportacao de entradas e saidas |
 | SupplyReportEndpoints | `inventoryBalance` | `/supply/reports/inventory/balance` | Relatorio de saldo |
-| SupplyReportEndpoints | `inventoryBalanceExport` | `/supply/reports/inventory/balance/export` | Exportacao de saldo |
-| SupplyReportEndpoints | `inventoryWithoutMovement` | `/supply/reports/inventory/without-movement` | Produtos sem movimentacao |
-| SupplyReportEndpoints | `inventoryWithoutMovementExport` | `/supply/reports/inventory/without-movement/export` | Exportacao de produtos sem movimentacao |
+| SupplyReportEndpoints | `inventoryWithoutMovement` | `/supply/reports/inventory/without-movement` | Produtos sem circulacao: estoque parado, valor parado e, com `only_active_planogram_items`, restrito aos itens do planograma ativo |
 | SupplyReportEndpoints | `nfeInOperation` | `/supply/reports/nfe-in/operation` | Relatorio de operacoes NF-e entrada |
-| SupplyReportEndpoints | `nfeInOperationExport` | `/supply/reports/nfe-in/operation/export` | Exportacao de operacoes NF-e entrada |
 | SupplyReportEndpoints | `nfeInSupplier` | `/supply/reports/nfe-in/supplier` | Relatorio por fornecedor |
-| SupplyReportEndpoints | `nfeInSupplierExport` | `/supply/reports/nfe-in/supplier/export` | Exportacao por fornecedor |
 | SupplyReportEndpoints | `nfeInProduct` | `/supply/reports/nfe-in/product` | Relatorio por produto |
-| SupplyReportEndpoints | `nfeInProductExport` | `/supply/reports/nfe-in/product/export` | Exportacao por produto |
 | SupplyReportEndpoints | `nfeInProgress` | `/supply/reports/nfe-in/progress` | Progresso de NF-e entrada |
-| SupplyReportEndpoints | `nfeInProgressExport` | `/supply/reports/nfe-in/progress/export` | Exportacao do progresso de NF-e entrada |
-| SupplyReportEndpoints | `nfeInProductSupplier` | `/supply/reports/nfe-in/product-supplier` | Relatório produto-fornecedor |
-| SupplyReportEndpoints | `nfeInProductSupplierExport` | `/supply/reports/nfe-in/product-supplier/export` | Exportação produto-fornecedor |
+| SupplyReportEndpoints | `nfeInProductSupplier` | `/supply/reports/nfe-in/product-supplier` | Relatorio de preco de compra por fornecedor, com variacao percentual e indicacao do fornecedor mais barato |
 | SupplyReportEndpoints | `buyOrder` | `/supply/reports/buy-order` | Relatório de pedidos de compra |
-| SupplyReportEndpoints | `buyOrderExport` | `/supply/reports/buy-order/export` | Exportação de pedidos de compra |
 | SupplyReportEndpoints | `productLoss` | `/supply/reports/product-loss/list` | Relatório de perdas |
-| SupplyReportEndpoints | `productLossExport` | `/supply/reports/product-loss/export` | Exportação de perdas |
-| SupplyReportEndpoints | `shrinkage` | `/supply/reports/shrinkage/list` | Relatório de quebra de acuracidade |
-| SupplyReportEndpoints | `shrinkageExport` | `/supply/reports/shrinkage/export` | Exportação de quebra de acuracidade |
+| SupplyReportEndpoints | `shrinkage` | `/supply/reports/shrinkage/list` | Relatorio de quebra e acuracidade do estoque por PDV |
+| SupplyReportEndpoints | `shrinkageExport` | `/supply/reports/shrinkage/export` | Exportar quebra e acuracidade |
 | SupplyReportEndpoints | `purchaseSuggestion` | `/supply/reports/purchase-suggestion` | Sugestão de compra |
-| SupplyReportEndpoints | `purchaseSuggestionExport` | `/supply/reports/purchase-suggestion/export` | Exportação de sugestão de compra |
+| SupplyReportEndpoints | `purchaseSuggestionExport` | `/supply/reports/purchase-suggestion/export` | Exportar sugestão de compra |
 | SupplyReportEndpoints | `costOfGoodsSold` | `/supply/reports/inventory/cost-of-goods-sold` | Relatório de custo da mercadoria vendida |
 | SupplyReportEndpoints | `costOfGoodsSoldExport` | `/supply/reports/inventory/cost-of-goods-sold/export` | Exportação do custo da mercadoria vendida |
 | SupplierContactEndpoints | `list` | `/registrations/supplier/list` | Listar fornecedores |
@@ -783,7 +741,7 @@ O catálogo documentado reúne **102 arquivos de endpoints** organizados em 11 d
 | GoodsReceiptEndpoints | `finish(id)` | `/inventory/goods-receipt/{id}/finish` | Finalizar recebimento |
 | GoodsReceiptEndpoints | `details(id)` | `/inventory/goods-receipt/{id}` | Detalhes do recebimento |
 | GoodsReceiptEndpoints | `reverse(id)` | `/inventory/goods-receipt/del/{id}` | Reverter recebimento |
-| GoodsReceiptEndpoints | `itemExport(id)` | `/inventory/goods-receipt/{id}/items/export` | Exportar itens do recebimento |
+| GoodsReceiptEndpoints | `itemExport(id)` | `/inventory/goods-receipt/{id}/items/export` | Exportar os itens da conferência; sem id de conferência, retorna `undefined` |
 
 ### NFe/Fiscal (11 arquivos)
 
@@ -799,8 +757,8 @@ O catálogo documentado reúne **102 arquivos de endpoints** organizados em 11 d
 | NfeInEndpoints | `authorize(id)` | `/supply/purchase-invoice/authorize/{id}` | Autorizar NF-e |
 | NfeInEndpoints | `reissue(id)` | `/supply/purchase-invoice/reissuance/{id}` | Reemitir NF-e |
 | NfeInEndpoints | `nextSequenceNumber` | `/supply/purchase-invoice/next-sequence` | Próximo número sequencial |
-| NfeInEndpoints | `defaultSeriesNumber(companyId)` | `/supply/purchase-invoice/default-series-number/{companyId}` | Número de série padrão por empresa |
-| NfeInEndpoints | `defaultTransactionNature(companyId)` | `/supply/purchase-invoice/default-transaction-nature/{companyId}` | Natureza de operação padrão por empresa |
+| NfeInEndpoints | `defaultSeriesNumber(companyId)` | `/supply/purchase-invoice/default-series-number/{companyId}` | Número de série padrão da empresa |
+| NfeInEndpoints | `defaultTransactionNature(companyId)` | `/supply/purchase-invoice/default-transaction-nature/{companyId}` | Natureza de operação padrão da empresa |
 | NfeInEndpoints | `returnInventory(id)` | `/supply/purchase-invoice/{id}/return-inventory` | Devolver ao estoque |
 | NfeInEndpoints | `importXml` | `/supply/purchase-invoice/import/xml` | Importar XML |
 | NfeInEndpoints | `detailsByAccessKey(accessKey)` | `/supply/purchase-invoice/details/{accessKey}` | Detalhes por chave de acesso |
@@ -819,8 +777,8 @@ O catálogo documentado reúne **102 arquivos de endpoints** organizados em 11 d
 | NfeOutEndpoints | `returnableBalance(id)` | `/sales/sales-invoice/{id}/returnable-balance` | Consultar saldo retornavel |
 | NfeOutEndpoints | `transactionNature` | `/sales/sales-invoice/transaction-nature` | Natureza de operacao |
 | NfeOutEndpoints | `nextSequenceNumber` | `/sales/sales-invoice/next-sequence` | Proximo numero sequencial |
-| NfeOutEndpoints | `defaultSeriesNumber(companyId)` | `/sales/sales-invoice/default-series-number/{companyId}` | Número de série padrão por empresa |
-| NfeOutEndpoints | `defaultTransactionNature(companyId)` | `/sales/sales-invoice/default-transaction-nature/{companyId}` | Natureza de operação padrão por empresa |
+| NfeOutEndpoints | `defaultSeriesNumber(companyId)` | `/sales/sales-invoice/default-series-number/{companyId}` | Numero de serie padrao da empresa |
+| NfeOutEndpoints | `defaultTransactionNature(companyId)` | `/sales/sales-invoice/default-transaction-nature/{companyId}` | Natureza de operação padrao da empresa |
 | NfceEndpoints | `list` | `/sales/nfce/list` | Listar NFC-e |
 | NfceEndpoints | `add` | `/sales/nfce/add` | Adicionar NFC-e |
 | NfceEndpoints | `edit(id)` | `/sales/nfce/edit/{id}` | Editar NFC-e |
@@ -833,8 +791,8 @@ O catálogo documentado reúne **102 arquivos de endpoints** organizados em 11 d
 | NfceEndpoints | `batchReissue` | `/sales/nfce/batch-reissuance` | Reemitir em lote |
 | NfceEndpoints | `transactionNature` | `/sales/nfce/transaction-nature` | Natureza de operação |
 | NfceEndpoints | `nextSequenceNumber` | `/sales/nfce/next-sequence` | Próximo número sequencial |
-| NfceEndpoints | `defaultSeriesNumber(companyId)` | `/sales/nfce/default-series-number/{companyId}` | Número de série padrão por empresa |
-| NfceEndpoints | `defaultTransactionNature(companyId)` | `/sales/nfce/default-transaction-nature/{companyId}` | Natureza de operação padrão por empresa |
+| NfceEndpoints | `defaultSeriesNumber(companyId)` | `/sales/nfce/default-series-number/{companyId}` | Número de série padrão da empresa |
+| NfceEndpoints | `defaultTransactionNature(companyId)` | `/sales/nfce/default-transaction-nature/{companyId}` | Natureza de operação padrão da empresa |
 | NfceEndpoints | `printDanfe(id)` | `/sales/nfce/print/{id}` | Imprimir DANFE |
 | NfceDisableEndpoints | `list` | `/sales/nfce-disable/list` | Listar inutilizações |
 | NfceDisableEndpoints | `add` | `/sales/nfce-disable/add` | Adicionar inutilização |
@@ -842,15 +800,14 @@ O catálogo documentado reúne **102 arquivos de endpoints** organizados em 11 d
 | NfceDisableEndpoints | `delete(id)` | `/sales/nfce-disable/del/{id}` | Excluir inutilização |
 | NfceDisableEndpoints | `cancel(id)` | `/sales/nfce-disable/cancel/{id}` | Cancelar inutilização |
 | NfeConfigEndpoints | `edit` | `/preferences/config/nfe` | Editar configuração NF-e |
-| NfeConfigEndpoints | `details(companyId)` | `/preferences/config/nfe/{companyId}` | Detalhes da configuração por empresa |
-| NfeConfigEndpoints | `health` | `/preferences/config/nfe/health` | Verificação de saúde da configuração |
+| NfeConfigEndpoints | `details(companyId)` | `/preferences/config/nfe/{companyId}` | Detalhes da configuração da empresa |
 | NfeConfigEndpoints | `resetSequenceNumber` | `/preferences/config/nfe/reset-sequence-number` | Resetar número sequencial |
-| NfeDistributionEndpoints | `status(companyId)` | `/supply/distribution/status/{companyId}` | Status da distribuição por empresa |
+| NfeDistributionEndpoints | `status(companyId)` | `/supply/distribution/status/{companyId}` | Status da distribuição da empresa (pausada, ativa, erros) |
 | NfeDistributionEndpoints | `list` | `/supply/distribution/list` | Listar documentos |
 | NfeDistributionEndpoints | `import(id)` | `/supply/distribution/documents/{id}/import` | Importar documento |
-| NfeDistributionEndpoints | `changeStatus(id)` | `/supply/distribution/status/{id}` | Alterar status |
-| NfeDistributionEndpoints | `documentXml(companyId, nsu)` | `/supply/distribution/documents/{companyId}/{nsu}/xml` | XML do documento distribuído |
-| NfeDistributionEndpoints | `documentDanfe(companyId, nsu)` | `/supply/distribution/documents/{companyId}/{nsu}/danfe` | DANFE do documento distribuído |
+| NfeDistributionEndpoints | `changeStatus(id)` | `/supply/distribution/status/{id}` | Alterar o status de um documento de distribuição (ex.: ignorar ou recusar a nota, com motivo) |
+| NfeDistributionEndpoints | `documentXml(companyId, nsu)` | `/supply/distribution/documents/{companyId}/{nsu}/xml` | Baixar o XML do documento pelo NSU, dentro da empresa |
+| NfeDistributionEndpoints | `documentDanfe(companyId, nsu)` | `/supply/distribution/documents/{companyId}/{nsu}/danfe` | Baixar a DANFE do documento pelo NSU, dentro da empresa |
 | TransactionNatureEndpoints | `list` | `/preferences/transaction-nature/list` | Listar naturezas de operação |
 | TransactionNatureEndpoints | `add` | `/preferences/transaction-nature/add` | Adicionar natureza |
 | TransactionNatureEndpoints | `edit(id)` | `/preferences/transaction-nature/edit/{id}` | Editar natureza |
@@ -932,7 +889,7 @@ O catálogo documentado reúne **102 arquivos de endpoints** organizados em 11 d
 | CustomerRegistrationEndpoints | `find(token)` | `/public/customer-registration/{token}` | Buscar cadastro público de cliente |
 | CustomerRegistrationEndpoints | `confirm(token)` | `/public/customer-registration/{token}/confirm` | Confirmar cadastro público de cliente |
 
-### Sistema/Configuracao (11 arquivos)
+### Sistema/Configuracao (12 arquivos)
 
 | Arquivo | Propriedade | Path | Descrição |
 |---------|-------------|------|-----------|
@@ -940,19 +897,20 @@ O catálogo documentado reúne **102 arquivos de endpoints** organizados em 11 d
 | SystemEndpoints | `usage` | `/system/usage` | Uso do sistema |
 | SystemEndpoints | `modules` | `/system/modules` | Módulos disponíveis |
 | SystemEndpoints | `plan` | `/system/plan` | Plano do sistema |
-| SystemEndpoints | `billing` | `/system/billing` | Cobrança do sistema |
+| SystemEndpoints | `billing` | `/system/billing` | Cobranca do sistema |
 | SystemEndpoints | `clientApp` | `/system/client-app` | Aplicacao cliente do sistema |
 | SystemTypeEndpoints | `list` | `/system-type/list` | Listar tipos de sistema |
 | SystemTypeEndpoints | `getSystemTypeByClassName(className)` | `/system-type/{className}` | Buscar tipo por classe |
-| CompanyInformationEndpoints | `edit` | `/preferences/company` | Editar dados da empresa |
-| CompanyInformationEndpoints | `details` | `/preferences/company` | Detalhes da empresa |
+| CompanyEndpoints | `list` | `/preferences/company/list` | Listar empresas (Preferências › Empresas) |
 | CompanyEndpoints | `create` | `/preferences/company/create` | Criar empresa |
-| CompanyEndpoints | `list` | `/preferences/company/list` | Listar empresas |
 | CompanyEndpoints | `details(id)` | `/preferences/company/{id}` | Detalhes da empresa |
 | CompanyEndpoints | `edit(id)` | `/preferences/company/edit/{id}` | Editar empresa |
 | CompanyEndpoints | `toggleStatus(id)` | `/preferences/company/status/{id}` | Ativar/desativar empresa |
+| AccountantEndpoints | `list` | `/preferences/accountant/list` | Listar contadores, para o campo de contador do cadastro de empresa |
+| AccountantEndpoints | `create` | `/preferences/accountant/create` | Criar contador (modal do cadastro de empresa) |
+| AccountantEndpoints | `edit(id)` | `/preferences/accountant/edit/{id}` | Editar contador |
 | CertificateConfigEndpoints | `edit` | `/preferences/config/certificate` | Editar certificado digital |
-| CertificateConfigEndpoints | `details(companyId)` | `/preferences/config/certificate/{companyId}` | Detalhes do certificado por empresa |
+| CertificateConfigEndpoints | `details(companyId)` | `/preferences/config/certificate/{companyId}` | Detalhes do certificado da empresa |
 | RegistrationConfigEndpoints | `edit` | `/preferences/config/registration` | Editar configuração de cadastro |
 | RegistrationConfigEndpoints | `details` | `/preferences/config/registration` | Detalhes da configuração |
 | UiConfigEndpoints | `edit` | `/preferences/config/ui` | Editar configuração de interface |
@@ -1087,8 +1045,10 @@ O catálogo documentado reúne **102 arquivos de endpoints** organizados em 11 d
 | NotificationsEndpoints | `stream` | `/notification/stream` | Stream de notificações (SSE) |
 | BarcodeNotFoundEndpoints | `list` | `/sales/reports/barcode-not-found` | Listar códigos de barras não encontrados |
 | BarcodeNotFoundEndpoints | `addToPlanogram` | `/sales/reports/barcode-not-found/add-to-planogram` | Adicionar ao planograma |
-| SupportPageEndpoints | `support` | `/suporte` | Pagina de suporte |
-| SystemUserEndpoints | `dashboard` | `/inicio/indice` | Indice do usuario do sistema |
+| ExportEndpoints | `file(attachmentId)` | `/export/{attachmentId}/file` | Baixar o arquivo de uma exportação pelo id do anexo gerado |
+| WebhookEventEndpoints | `list` | `/webhook-events/list` | Listar eventos de webhook |
+| WebhookEventEndpoints | `export` | `/webhook-events/export` | Exportar eventos de webhook |
+| WebhookEventEndpoints | `details(id)` | `/webhook-events/{id}` | Detalhes de um evento de webhook |
 
 ## Links de Navegação
 
@@ -1110,16 +1070,16 @@ O catálogo acima reúne os seguintes arquivos e endpoints:
 | Domínio | Arquivos | Endpoints |
 |---------|----------|-----------|
 | Auth | 1 | 6 |
-| Conta/Usuarios | 6 | 47 |
-| Catalogo | 6 | 54 |
-| Vendas | 8 | 68 |
-| Financeiro | 14 | 106 |
-| Suprimentos/Estoque | 19 | 141 |
-| NFe/Fiscal | 11 | 112 |
+| Conta/Usuarios | 5 | 44 |
+| Catalogo | 6 | 49 |
+| Vendas | 9 | 58 |
+| Financeiro | 15 | 111 |
+| Suprimentos/Estoque | 19 | 138 |
+| NFe/Fiscal | 11 | 100 |
 | Contatos | 7 | 36 |
-| Sistema/Configuracao | 11 | 39 |
+| Sistema/Configuracao | 12 | 39 |
 | Dashboard | 3 | 23 |
-| Outros | 16 | 82 |
-| **Total** | **102** | **714** |
+| Outros | 16 | 84 |
+| **Total** | **104** | **688** |
 
 Todos os endpoints seguem o padrão de objetos constantes exportados, com paths estáticos para operações sem parâmetros e arrow functions para paths dinâmicos. Os wrappers tipados em `axios.ts` garantem que todas as chamadas retornem `ApiResponse<T>`, mantendo consistência na camada de comunicação. Endpoints que utilizam `responseType` binário ou em streaming retornam o payload cru e são tratados sem o envelope padrão da API.
