@@ -404,7 +404,7 @@ pr-validation-auto-approve.yml
 
 ## Interface de assinatura
 
-A pagina de assinatura concentra os dados da assinatura em blocos responsivos, organizados com grid Bootstrap e cards de informacao. O componente principal `SubscriptionDetailsTab` renderiza um conjunto de metricas e listas a partir de `systemModulesData` e `systemUsageData`, com comportamento responsivo definido diretamente nas classes utilitarias.
+A pagina de assinatura concentra os dados da assinatura e de cobrança em blocos responsivos, organizados com grid Bootstrap, cards de informação e uma tabela para listagem de empresas de cobrança. O componente principal `SubscriptionDetailsTab` continua renderizando métricas e listas a partir de `systemModulesData` e `systemUsageData`, enquanto `SubscriptionBillingTab` passa a organizar os dados de cobrança por empresa em uma `DataTable` e abre um modal dedicado para edição.
 
 ### Estrutura de responsividade
 
@@ -416,6 +416,8 @@ A composição de colunas usa classes como `col-12`, `col-sm-6`, `col-md-4` e `c
 | Cards de resumo operacional | `col-6 col-md-4 col-xl` | 2 colunas no mobile, 3 colunas em telas medias e distribuicao flexivel em telas extra grandes |
 | Cards de indicadores complementares | `col-6 col-md-4 col-xl` | Mesma regra de largura, preservando alinhamento em grade |
 | Cartoes de status e disponibilidade | `col-6 col-md-4 col-xl` | Garante encaixe consistente no bloco final da tela |
+| Lista de cobranças | `DataTable` com `variant="list"` | Lista registros de empresas com ações por linha |
+| Modal de edição de cobrança | `Modal` do React Bootstrap | Exibe formulário completo para edição por empresa |
 
 ### Dados exibidos por `SubscriptionDetailsTab`
 
@@ -452,6 +454,8 @@ O componente `SubscriptionDetailsTab` segue um fluxo direto de leitura dos dados
 | Bloco de metricas | `d-flex flex-column align-items-center justify-content-center` | Centraliza informacoes numericas e textos |
 | Bloco de indicadores | `d-flex flex-column gap-4` | Organiza cards empilhados dentro da coluna |
 | Card interno de status | `p-4 bg-light rounded flex-grow-1` | Mantem o bloco preenchendo toda a altura disponivel |
+| Tabela de cobranças | `DataTable` | Lista os registros de `CompanyBillingDto` |
+| Modal de edição | `Modal centered size="lg"` | Permite edição dos dados da empresa selecionada |
 
 ### Dependencias visuais e comportamento
 
@@ -462,6 +466,164 @@ O componente `SubscriptionDetailsTab` segue um fluxo direto de leitura dos dados
 | Iconografia | `ki-outline ki-chart-line-up-2`, `ki-outline ki-notification-on`, `ki-outline ki-screen` | Representa metrica, alerta e tela/status |
 | Cores | `text-gray-600`, `text-gray-800`, `text-gray-300` | Diferencia dados primarios e secundarios |
 | Estado vazio | condicional `systemModulesData?.modules && systemModulesData.modules.length > 0` | Evita renderizacao da lista quando nao ha modulos |
+| Indicador de status | `StatusBadge` | Exibe situação da empresa na tabela de cobrança |
+| Ações por linha | `RowMenuDropdown` | Abre o menu contextual com a ação de edição |
+| Modal de edição | `EditCompanyBillingModal` | Encapsula formulário, validação e submissão |
+
+### Estrutura da cobrança por empresa
+
+A aba `SubscriptionBillingTab` organiza os dados de cobrança em dois blocos principais:
+
+1. **Dados de cobrança utilizados pela EasyPDV**  
+   Exibe uma tabela com as empresas cadastradas para faturamento.
+2. **Forma de pagamento**  
+   Mantém a visualização da configuração de boleto bancário com status e detalhes do ciclo de cobrança.
+
+A tabela usa a hook `useCompanyBillings`, o identificador de cache `subscriptionKeys.billings` e a função `getCompanyBillingColumns` para definir as colunas e o comportamento das ações.
+
+#### Fluxo de dados da tabela
+
+1. `useCompanyBillings()` executa `listCompanyBillings()`
+2. A resposta é normalizada como `CompanyBillingDto[]`
+3. `getCompanyBillingColumns({ onEdit: setEditing })` constrói as colunas com:
+   - empresa
+   - nome de cobrança
+   - CPF/CNPJ formatado
+   - e-mail
+   - menu de ações
+4. A seleção de **Editar** em cada linha preenche o estado `editing`
+5. Quando `editing` possui valor, o componente renderiza `EditCompanyBillingModal`
+
+### Tabela de campos de `CompanyBillingDto`
+
+| Campo | Tipo/Origem | Uso na interface |
+|-------|-------------|------------------|
+| `company` | relação da empresa | Exibido na coluna **EMPRESA** com `billedCompanyName(company)` e badge de inatividade |
+| `name` | string | Exibido em **NOME DE COBRANÇA** |
+| `identification_document` | string | Exibido em **CPF/CNPJ** com formatação por `formatBillingDocument` |
+| `email` | string | Exibido em **E-MAIL** |
+| `company.id` | string | Usado como chave de atualização no formulário de edição |
+| `company.active` | boolean | Define a renderização de `StatusBadge` com rótulo **Inativa** |
+
+### `getCompanyBillingColumns`
+
+A função `getCompanyBillingColumns` recebe um objeto de handlers e devolve a configuração das colunas da `DataTable`.
+
+| Parâmetro | Tipo | Finalidade |
+|-----------|------|-----------|
+| `onEdit` | `(billing: CompanyBillingDto) => void` | Abre o modal de edição com o registro selecionado |
+
+| Coluna | Header | Renderização |
+|--------|--------|--------------|
+| `company` | `EMPRESA` | Combina nome da empresa e badge de status |
+| `name` | `NOME DE COBRANÇA` | Usa `accessorKey: 'name'` |
+| `identification_document` | `CPF/CNPJ` | Exibe documento formatado ou `--` |
+| `email` | `E-MAIL` | Usa `accessorKey: 'email'` |
+| `actions` | vazio | Renderiza `RowMenuDropdown` com ação **Editar** |
+
+### `EditCompanyBillingModal`
+
+O componente `EditCompanyBillingModal` encapsula o fluxo de edição de cobrança por empresa com `Modal`, `Formik`, `useMutation` e `useQueryClient`.
+
+| Elemento | Responsabilidade | Props / Estado |
+|----------|------------------|----------------|
+| `Modal` | Exibe a janela centralizada | `show`, `centered`, `size="lg"` |
+| `Formik` | Gerencia o formulário de `CompanyBillingDto` | `initialValues`, `validationSchema`, `onSubmit` |
+| `useMutation` | Persiste os dados da cobrança | `mutationFn: updateCompanyBilling(...)` |
+| `useQueryClient` | Sincroniza cache | `invalidateQueries({ queryKey: subscriptionKeys.billings })` |
+| `CompanyBillingForm` | Renderiza os campos do formulário | `formik` |
+
+#### Fluxo de submissão
+
+1. O modal recebe `billing` e `onClose`
+2. `toCompanyBillingFormValues(billing)` converte o DTO para valores de formulário
+3. `useFormik` valida os campos com `companyBillingSchema`
+4. No submit, `updateMutation.mutate(values)` chama `updateCompanyBilling(billing.company.id, values)`
+5. Em caso de sucesso:
+   - `SystemNotification.success('Dados de cobrança atualizados com sucesso')`
+   - `queryClient.invalidateQueries({ queryKey: subscriptionKeys.billings })`
+   - `onClose()`
+6. Em caso de erro:
+   - `SystemNotification.error(getErrorMessage(error))`
+
+### `CompanyBillingForm`
+
+O componente `CompanyBillingForm` concentra os campos editáveis da cobrança da empresa. Ele recebe `formik` via prop e mantém toda a lógica de entrada, mascaramento e sincronização de valores.
+
+| Prop | Tipo | Descrição |
+|------|------|-------------|
+| `formik` | `FormikProps<CompanyBillingDto>` | Objeto de estado e helpers do formulário |
+
+#### Campos do formulário
+
+| Campo | Componente | Comportamento |
+|-------|------------|---------------|
+| `person_type` | `Select` | Define se o documento exibido é CPF ou CNPJ |
+| `name` | `<input type="text">` | Campo obrigatório de nome ou razão social |
+| `identification_document` | `CpfInput` / `CnpjInput` | Alterna conforme `person_type` |
+| `tax_regime` | `Select` | Seleção opcional de regime tributário |
+| `state_registration` | `<input type="text">` | Inscrição estadual, desabilitada quando `state_registration_exempt` está marcado |
+| `state_registration_exempt` | `checkbox` | Limpa `state_registration` ao marcar isenção |
+| `email` | `<input type="email">` | Campo obrigatório de e-mail |
+| `telephone` | `PatternFormat` | Máscara de telefone `(##) #####-####` |
+| `address` | `ContactAddressInputGroup` | Grupo de campos do endereço de cobrança |
+
+#### Regras de comportamento
+
+| Regra | Implementação |
+|-------|---------------|
+| Alternar CPF/CNPJ | Verifica `formik.values.person_type?.value === 'PHYSICAL'` |
+| Limpar documento ao trocar tipo | `formik.setFieldValue('identification_document', '')` |
+| Exibir máscara de telefone | `PatternFormat` com `format="(##) #####-####"` |
+| Controlar IE isento | Checkbox `state_registration_exempt` |
+| Limpar inscrição estadual ao isentar | `formik.setFieldValue('state_registration', '')` |
+| Validar endereço obrigatório | `requiredFields={['zip_code', 'street', 'number', 'neighborhood', 'city', 'state']}` |
+| Validar após submit | `shouldValidate={formik.submitCount > 0}` |
+
+### `companyBillingSchema`
+
+A validação do formulário usa Yup em `companyBillingSchema`.
+
+| Campo | Regra | Mensagem |
+|-------|-------|----------|
+| `name` | obrigatório | `Nome é obrigatório` |
+| `identification_document` | obrigatório | `CPF/CNPJ é obrigatório` |
+| `email` | obrigatório e formato e-mail | `E-mail inválido` / `E-mail é obrigatório` |
+| `telephone` | opcional | sem validação obrigatória |
+| `address.zip_code` | obrigatório | `CEP é obrigatório` |
+| `address.street` | obrigatório | `Endereço é obrigatório` |
+| `address.number` | obrigatório | `Número é obrigatório` |
+| `address.neighborhood` | obrigatório | `Bairro é obrigatório` |
+| `address.city` | obrigatório | `Cidade é obrigatório` |
+| `address.state.value` | obrigatório | `Estado é obrigatório` |
+
+### Tabela de configuração da edição de cobrança
+
+| Item | Valor | Uso |
+|------|-------|-----|
+| `queryKey` | `subscriptionKeys.billings` | Cache da lista de cobranças |
+| `queryFn` | `listCompanyBillings()` | Busca as empresas de cobrança |
+| `mutationFn` | `updateCompanyBilling(companyId, billing)` | Persiste a cobrança da empresa selecionada |
+| `tableKey` | `company-billings` | Identificador da tabela na `DataTable` |
+| `variant` | `list` | Apresentação em formato de lista |
+| `hasMinHeight` | `false` | Remove altura mínima da tabela |
+| `isSearchable` | `false` | Desabilita busca interna |
+| `size` do modal | `lg` | Exibe o formulário com área suficiente para os campos |
+
+### Dependências visuais e comportamento da cobrança
+
+| Recurso | Identificador | Papel no componente |
+|---------|--------------|--------------------|
+| `MetronicCard` | `className="h-auto"` | Contêiner visual dos blocos de cobrança |
+| `DataTable` | `variant="list"` | Lista registros com ações por linha |
+| `StatusBadge` | `tone="danger"` | Destaca empresa inativa |
+| `RowMenuDropdown` | ação `Editar` | Dispara a edição do registro |
+| `Modal` | `react-bootstrap/Modal` | Edição em contexto sobreposto |
+| `Button` | `react-bootstrap/Button` | Ações de cancelar e salvar |
+| `PatternFormat` | `react-number-format` | Máscara de telefone |
+| `Select` | `react-select` | Campos de enumeração |
+| `CpfInput` / `CnpjInput` | inputs customizados | Máscara do documento conforme o tipo |
+| `ContactAddressInputGroup` | grupo de endereço | Subformulário de endereço de cobrança |
 
 ### Exemplo de estrutura renderizada
 
@@ -470,7 +632,9 @@ O componente `SubscriptionDetailsTab` segue um fluxo direto de leitura dos dados
 | Lista de modulos | Cards em grade, com 1, 2 ou 4 colunas dependendo do viewport |
 | Indicadores centrais | Cards com metricas numericas e subtitulos centralizados |
 | Disponibilidade do sistema | Percentual exibido em destaque com valor derivado do objeto de uso |
-| Informacoes complementares | Blocos com textos auxiliares e hierarquia visual padronizada |
+| Lista de cobranças | Tabela com empresa, nome de cobrança, documento, e-mail e menu de ações |
+| Edição de cobrança | Modal com formulário completo e validação por campo |
+| Forma de pagamento | Bloco fixo com boleto bancário, badge de status e botão de ação desabilitado |
 
 ## Integração com React Query na aplicação
 
@@ -523,31 +687,33 @@ O componente `src/app/pages/subscription/components/SubscriptionBillingTab.tsx` 
 
 | Hook | Função | Estado observado |
 |------|--------|------------------|
-| `useQuery` | Busca os dados de cobrança | `isPending: isBillingLoading` |
+| `useQuery` | Busca os dados de cobrança | `isPending` controla o carregamento da lista |
 | `useMutation` | Salva os dados de cobrança | `isPending` controla botão e envio |
 | `useFormik` | Gerencia formulário | Integra `initialValues`, validação e submit |
+| `useQueryClient` | Sincroniza cache | Invalida `subscriptionKeys.billings` após salvar |
 | `SystemNotification.success` | Feedback positivo | Exibe confirmação após salvar |
 | `SystemNotification.error` | Feedback de erro | Exibe mensagem retornada por `getErrorMessage(error)` |
 
 #### Fluxo de dados
 
-1. `useQuery` executa `getSystemBilling()`
-2. A resposta preenche o formulário com `formik.setValues({ ...initialValues, ...response.data })`
-3. O estado de carregamento da consulta é lido por `isBillingLoading`
-4. O formulário envia os dados por `updateSystemBilling(values)` dentro de `mutationFn`
-5. Durante o envio, o botão usa `updateMutation.isPending` para bloquear reenvio e exibir `Salvando...`
-6. Em caso de sucesso, o componente dispara `SystemNotification.success("Dados de cobrança atualizados com sucesso")`
-7. Em caso de erro, o tratamento usa `SystemNotification.error(getErrorMessage(error))`
+1. `useQuery` executa `listCompanyBillings()`
+2. A resposta preenche a tabela com `CompanyBillingDto[]`
+3. `getCompanyBillingColumns({ onEdit })` define a coluna de ações e o acionamento do modal
+4. Ao selecionar **Editar**, o estado `editing` recebe o registro da linha
+5. `EditCompanyBillingModal` abre com os dados da cobrança selecionada
+6. O submit do modal chama `updateCompanyBilling(billing.company.id, values)`
+7. Após sucesso, a lista é invalidada por `subscriptionKeys.billings` e a tela recarrega os registros
 
 #### Tabela de configuração
 
 | Item | Valor | Uso |
 |------|-------|-----|
-| `queryKey` | `["systemBilling"]` | Cache dos dados de cobrança |
-| `queryFn` | `getSystemBilling()` | Busca informações de cobrança do sistema |
-| `mutationFn` | `updateSystemBilling(values)` | Persiste os dados do formulário |
-| Estado de carregamento | `isPending` | Controla carregamento da consulta e da mutation |
+| `queryKey` | `subscriptionKeys.billings` | Cache dos dados de cobrança |
+| `queryFn` | `listCompanyBillings()` | Busca informações de cobrança do sistema |
+| `mutationFn` | `updateCompanyBilling(companyId, values)` | Persiste os dados do formulário |
+| Estado de carregamento | `isPending` | Controla carregamento da consulta |
 | Botão de submit | `disabled={updateMutation.isPending}` | Bloqueia submissão durante o envio |
+| Invalidação de cache | `invalidateQueries({ queryKey: subscriptionKeys.billings })` | Recarrega a lista após salvar |
 
 ### SubscriptionDetailsTab
 
@@ -556,7 +722,6 @@ O componente `src/app/pages/subscription/components/SubscriptionDetailsTab.tsx` 
 | Consulta | `queryKey` | Função | Dado retornado |
 |----------|------------|--------|----------------|
 | Uso do sistema | `["getSystemUsage"]` | `getSystemUsage()` | `systemUsageData` |
-| Proprietário do sistema | `["getSystemOwner"]` | `getSystemOwner()` | `systemOwnerData` |
 | Módulos do sistema | `["getSystemModules"]` | `getSystemModules()` | `systemModulesData` |
 | Plano da assinatura | `["getSystemPlan"]` | `getSystemPlan()` | `systemPlanData` |
 
@@ -565,7 +730,6 @@ O componente `src/app/pages/subscription/components/SubscriptionDetailsTab.tsx` 
 Cada consulta expõe `isPending`, mapeado localmente para os estados:
 
 - `isUsageLoading`
-- `isOwnerLoading`
 - `isModulesLoading`
 - `isPlanLoading`
 
@@ -577,7 +741,6 @@ Esses estados permitem renderização fragmentada dos blocos da interface, sem a
 2. A resposta é retornada em `response.data`
 3. O componente consome os dados por desestruturação:
    - `systemUsageData`
-   - `systemOwnerData`
    - `systemModulesData`
    - `systemPlanData`
 4. Erros são tratados pelos mecanismos globais de tratamento do cliente HTTP, sem handlers locais em cada consulta
@@ -587,7 +750,6 @@ Esses estados permitem renderização fragmentada dos blocos da interface, sem a
 | Consulta | Chave | Observação |
 |----------|-------|------------|
 | Uso | `["getSystemUsage"]` | Consulta de métricas de uso do sistema |
-| Proprietário | `["getSystemOwner"]` | Consulta de identificação do titular |
 | Módulos | `["getSystemModules"]` | Consulta da lista de módulos habilitados |
 | Plano | `["getSystemPlan"]` | Consulta dos dados do plano contratado |
 
@@ -611,5 +773,8 @@ O código da aplicação segue alguns padrões consistentes no uso de `@tanstack
 | `SystemNotification` | Feedback visual de erro e sucesso | `getErrorMessage(error)` |
 | `PageShell` | Layout de página com título | `SubscriptionPage` |
 | `StepperComponent` | Navegação da etapa de setup | `SetupPage` |
-| `FormikProvider` / `useFormik` | Gerência de formulário | `SubscriptionBillingTab`, `SetupPage` |
+| `FormikProvider` / `useFormik` | Gerência de formulário | `SubscriptionBillingTab`, `SetupPage`, `EditCompanyBillingModal` |
 | `useQuery` / `useMutation` | Acesso assíncrono a APIs | Páginas de setup e assinatura |
+| `DataTable` | Exibição tabular de cobrança | `SubscriptionBillingTab` |
+| `EditCompanyBillingModal` | Edição dos dados da empresa | `SubscriptionBillingTab` |
+| `CompanyBillingForm` | Formulário de cobrança | `EditCompanyBillingModal` |
