@@ -506,7 +506,7 @@ O componente `SubscriptionDetailsTab` segue um fluxo direto de leitura dos dados
 ### Classes e componentes de layout
 
 | Elemento | Classe principal | Finalidade |
-|----------|------------------|-----------|
+|----------|-----------------|------------|
 | Wrapper da lista de modulos | `row g-4` | Define grid com espacamento entre itens |
 | Card de modulo | `d-flex flex-column gap-2 p-4 bg-light rounded h-100` | Estrutura vertical com fundo claro e altura uniforme |
 | Cabeçalho do card | `d-flex justify-content-between align-items-center` | Alinha titulo e metadados do modulo |
@@ -566,6 +566,35 @@ A página `src/app/pages/setup/SetupPage.tsx` utiliza `useMutation` e `useQuery`
 | `enabled` | `!!stepper` | Executa somente após a instância do stepper existir |
 | `meta.suppressGlobalError` | `true` | Mantém erro sem toast global |
 
+### SetupLogo
+
+O fluxo de upload do logo da empresa fica em `src/app/pages/setup/core/_requests.tsx` e usa `setupLogo(image, onUploadProgress)` para enviar o arquivo via `multipart/form-data`.
+
+| Item | Valor | Uso |
+|------|-------|-----|
+| Função | `setupLogo(image, onUploadProgress)` | Faz upload do logo da empresa |
+| Payload | `FormData` | Transporta o arquivo no campo `file` |
+| Modelo retornado | `AttachmentDto` | Representa o anexo persistido pela API |
+| Progresso | `AxiosProgressEvent` | Alimenta o callback `onUploadProgress` durante o upload |
+
+#### Fluxo de dados
+
+1. O componente de upload recebe um objeto `File`
+2. A função normaliza o nome do arquivo quando o nome excede 80 caracteres
+3. O arquivo é reconstituído com `new File([image], fileName, { type: image.type })`
+4. O novo arquivo é inserido no `FormData` com a chave `file`
+5. A requisição `post<AttachmentDto>(SetupEndpoints.setLogo, formData, ...)` envia os dados ao backend
+6. O callback `onUploadProgress` recebe os eventos de progresso da transmissão
+
+#### Tabela de configuração
+
+| Propriedade | Comportamento | Observação |
+|------------|----------------|------------|
+| Nome do arquivo | limitado a 80 caracteres | Preserva a extensão original ao final do nome |
+| Campo do form | `file` | Chave esperada pela API |
+| Header | `Content-Type: multipart/form-data` | Necessário para upload de arquivo |
+| Tipo de retorno | `AttachmentDto` | Resposta tipada da API |
+
 ### SubscriptionPage
 
 A página `src/app/pages/subscription/SubscriptionPage.tsx` usa o componente `PageShell` para encapsular o conteúdo da assinatura com título padronizado.
@@ -580,35 +609,92 @@ O `PageShell` fornece a moldura da página e substitui a estrutura manual com co
 
 ### SubscriptionBillingTab
 
-O componente `src/app/pages/subscription/components/SubscriptionBillingTab.tsx` controla os dados de cobrança do sistema.
+O componente `src/app/pages/subscription/components/SubscriptionBillingTab.tsx` controla os dados de cobrança da empresa e opera com uma tabela de registros, ações por linha e modal de edição.
 
-| Hook | Função | Estado observado |
-|------|--------|------------------|
-| `useQuery` | Busca os dados de cobrança | `isPending: isBillingLoading` |
-| `useMutation` | Salva os dados de cobrança | `isPending` controla botão e envio |
-| `useFormik` | Gerencia formulário | Integra `initialValues`, validação e submit |
-| `SystemNotification.success` | Feedback positivo | Exibe confirmação após salvar |
-| `SystemNotification.error` | Feedback de erro | Exibe mensagem retornada por `getErrorMessage(error)` |
+| Componente | Função | Papel no fluxo |
+|------------|--------|----------------|
+| `MetronicCard` | Contêiner visual | Envolve a grade e os controles da aba |
+| `DataTable` | Lista os dados | Renderiza as colunas retornadas por `getCompanyBillingColumns` |
+| `EditCompanyBillingModal` | Edição de registro | Recebe a linha selecionada e persiste os dados |
+| `useCompanyBillings` | Consulta dos dados | Entrega `billings` e `isPending` |
+| `getCompanyBillingColumns` | Configuração das colunas | Monta as colunas com callback de edição |
 
 #### Fluxo de dados
 
-1. `useQuery` executa `getSystemBilling()`
-2. A resposta preenche o formulário com `formik.setValues({ ...initialValues, ...response.data })`
-3. O estado de carregamento da consulta é lido por `isBillingLoading`
-4. O formulário envia os dados por `updateSystemBilling(values)` dentro de `mutationFn`
-5. Durante o envio, o botão usa `updateMutation.isPending` para bloquear reenvio e exibir `Salvando...`
-6. Em caso de sucesso, o componente dispara `SystemNotification.success("Dados de cobrança atualizados com sucesso")`
-7. Em caso de erro, o tratamento usa `SystemNotification.error(getErrorMessage(error))`
+1. `useCompanyBillings()` busca a lista de cobranças da empresa
+2. O hook expõe `data: billings = []` e `isPending`
+3. `SubscriptionBillingTab` mantém o item em edição no estado local `editing`
+4. `getCompanyBillingColumns({ onEdit: setEditing })` gera as colunas com ação de edição por linha
+5. A coluna de ações usa `RowMenuDropdown` com a ação `Editar`
+6. Quando `editing` contém um item, `EditCompanyBillingModal` recebe o DTO e abre a edição
+7. O modal dispara `updateCompanyBilling` e invalida o cache de cobranças via `queryClient`
 
 #### Tabela de configuração
 
 | Item | Valor | Uso |
 |------|-------|-----|
-| `queryKey` | `["systemBilling"]` | Cache dos dados de cobrança |
-| `queryFn` | `getSystemBilling()` | Busca informações de cobrança do sistema |
-| `mutationFn` | `updateSystemBilling(values)` | Persiste os dados do formulário |
-| Estado de carregamento | `isPending` | Controla carregamento da consulta e da mutation |
-| Botão de submit | `disabled={updateMutation.isPending}` | Bloqueia submissão durante o envio |
+| Hook de consulta | `useCompanyBillings()` | Carrega os registros de cobrança |
+| Estado local | `editing` | Guarda a linha selecionada para edição |
+| Colunas | `getCompanyBillingColumns({ onEdit })` | Recebe um handler de edição |
+| Ação por linha | `RowMenuDropdown` | Exibe o item `Editar` |
+| Componente de edição | `EditCompanyBillingModal` | Abre o formulário com os dados da linha |
+
+### getCompanyBillingColumns
+
+A função `src/app/pages/subscription/core/_columns.tsx` recebe um objeto de handlers e retorna a definição completa de colunas para `DataTable`.
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-------------|
+| `onEdit` | `(billing: CompanyBillingDto) => void` | Callback executado ao clicar em editar |
+
+#### Estrutura das colunas
+
+| Coluna | `id` | Função |
+|--------|------|--------|
+| Empresa | `company` | Exibe o nome formatado da empresa com `billedCompanyName` |
+| Documento | `document` | Mostra o documento formatado por `formatBillingDocument` |
+| Status | `status` | Renderiza `StatusBadge` com o status da cobrança |
+| Ações | `actions` | Renderiza `RowMenuDropdown` com ação `Editar` |
+
+#### Fluxo de renderização
+
+1. A tabela recebe um array de `CompanyBillingDto`
+2. Cada linha é convertida em células por `DataTableColumnDef<CompanyBillingDto>`
+3. O campo `actions` instancia `RowMenuDropdown`
+4. O clique em `Editar` chama `onEdit(row.original)`
+5. O componente pai define o item em edição e abre o modal correspondente
+
+### EditCompanyBillingModal
+
+O modal `src/app/pages/subscription/modal/EditCompanyBillingModal.tsx` controla a persistência dos dados de cobrança com `formik`, `useMutation` e `useQueryClient`.
+
+| Hook/Componente | Responsabilidade | Integração |
+|-----------------|------------------|------------|
+| `useFormik` | Controle do formulário | Recebe `initialValues`, `validationSchema` e `onSubmit` |
+| `useMutation` | Salva os dados | Executa `updateCompanyBilling(values)` |
+| `useQueryClient` | Sincroniza cache | Invalida `subscriptionKeys.billing` após sucesso |
+| `SystemNotification.success` | Feedback visual | Mostra confirmação de salvamento |
+| `SystemNotification.error` | Feedback de erro | Exibe mensagem a partir de `getErrorMessage(error)` |
+
+#### Fluxo de dados
+
+1. O componente recebe `billing` e `onClose` via props
+2. `toCompanyBillingFormValues(billing)` converte o DTO para o formato do formulário
+3. `useFormik` controla os campos do `CompanyBillingForm`
+4. No submit, `updateMutation.mutate(values)` envia os dados para a API
+5. Em sucesso, o modal invalida o cache por `subscriptionKeys.billing`
+6. O componente fecha o modal via `onClose()`
+7. Em caso de erro, `SystemNotification.error(getErrorMessage(error))` exibe o retorno da API
+
+#### Tabela de configuração
+
+| Propriedade | Valor | Descrição |
+|-------------|-------|-------------|
+| `initialValues` | `toCompanyBillingFormValues(billing)` | Popula o formulário a partir do DTO selecionado |
+| `validationSchema` | `companyBillingSchema` | Define as regras de validação |
+| `mutationFn` | `updateCompanyBilling(values)` | Persiste as informações da cobrança |
+| `queryClient.invalidateQueries` | `subscriptionKeys.billing` | Atualiza a lista após salvar |
+| Botão principal | `disabled={updateMutation.isPending}` | Bloqueia submissão enquanto o envio está em andamento |
 
 ### SubscriptionDetailsTab
 
