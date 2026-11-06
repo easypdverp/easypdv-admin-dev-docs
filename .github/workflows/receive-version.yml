@@ -1,4 +1,4 @@
-name: Receive Version Update
+name: 🤖👤 Docs · Receber versão
 
 on:
   repository_dispatch:
