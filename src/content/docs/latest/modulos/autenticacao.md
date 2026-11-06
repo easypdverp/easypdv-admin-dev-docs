@@ -611,6 +611,155 @@ A tela de confirmação de cadastro (`CustomerRegistrationConfirmationPage`) rod
 
 Ela confirma um cadastro de cliente feito no EasyPDV Touch, quando o cliente recebe o link por SMS. Ao abrir, consulta só `GET /public/customer-registration/{token}`; o `POST /public/customer-registration/{token}/confirm` só sai do clique em Confirmar, porque os aplicativos de SMS e WhatsApp abrem o link sozinhos para gerar a prévia. Essas rotas ficam na raiz da API, fora do prefixo `/admin` da `baseURL` padrão do client. Quando a consulta já retorna o cadastro confirmado ou expirado, a tela mostra a mensagem correspondente sem precisar do clique; um token desconhecido (HTTP 404) mostra o mesmo texto do link expirado, e o erro da confirmação (HTTP 409) mostra a mensagem do envelope.
 
+## Usuários: tabela de listagem
+
+A listagem de usuários usa `@tanstack/react-table` para montar cabeçalho, linhas e células a partir de `ColumnDef<User>`. O componente `UsersTable` consome o estado de consulta do provider e delega a renderização para células especializadas, como seleção, dados do usuário, último login, autenticação em dois passos e ações da linha.
+
+### Arquivos principais
+
+| Arquivo | Responsabilidade |
+|---------|-----------------|
+| `src/app/modules/apps/user-management/users-list/table/UsersTable.tsx` | Composição da tabela de usuários com `useReactTable` |
+| `src/app/modules/apps/user-management/users-list/table/columns/_columns.tsx` | Definição das colunas com `ColumnDef<User>` |
+| `src/app/modules/apps/user-management/users-list/table/columns/CustomHeaderColumn.tsx` | Renderização de headers com `flexRender` |
+| `src/app/modules/apps/user-management/users-list/table/columns/CustomRow.tsx` | Renderização das linhas visíveis |
+| `src/app/modules/apps/user-management/users-list/table/columns/UserCustomHeader.tsx` | Cabeçalhos com ordenação e integração com filtros |
+| `src/app/modules/apps/user-management/users-list/table/columns/UserSelectionHeader.tsx` | Header da coluna de seleção |
+| `src/app/modules/table/DataTable.tsx` | Função `dateRangeFilterFn` reutilizada nos filtros de tabela |
+
+### Estrutura da tabela
+
+| Elemento | Responsabilidade |
+|----------|-----------------|
+| `useReactTable` | Gera o modelo da tabela com `getCoreRowModel()` |
+| `table.getFlatHeaders()` | Obtém a lista plana de headers para a linha de cabeçalho |
+| `table.getRowModel().rows` | Obtém as linhas visíveis para renderização |
+| `flexRender()` | Renderiza `header` e `cell` definidos nas colunas |
+| `dateRangeFilterFn` | Filtro por intervalo de datas reutilizado por colunas compatíveis |
+
+### Colunas disponíveis
+
+| Coluna | Responsabilidade |
+|--------|-----------------|
+| `selection` | Seleção de linhas com checkbox em massa |
+| `name` | Exibe o componente `UserInfoCell` |
+| `role` | Mostra a função do usuário via `accessorKey` |
+| `last_login` | Exibe o último acesso com `UserLastLoginCell` |
+| `two_steps` | Mostra o estado de autenticação em dois fatores com `UserTwoStepsCell` |
+| `joined_day` | Exibe a data de ingresso via `accessorKey` |
+| `actions` | Renderiza `UserActionsCell` com ações contextuais |
+
+### Fluxo de dados da tabela
+
+1. `useQueryResponseData()` fornece o array de `users`.
+2. `useMemo()` estabiliza `users` e `usersColumns`.
+3. `useReactTable()` monta o modelo de linhas e headers.
+4. `CustomHeaderColumn` recebe cada `Header<User, unknown>` e usa `flexRender` para o conteúdo do cabeçalho.
+5. `CustomRow` percorre `row.getVisibleCells()` e renderiza cada célula com `flexRender`.
+6. As células especializadas acessam os dados por `row.original`, preservando o tipo do modelo `User`.
+
+### `UserCustomHeader`
+
+O componente `UserCustomHeader` coordena ordenação, estado visual e integração com o provider de consulta.
+
+| Prop | Tipo | Responsabilidade |
+|------|------|-----------------|
+| `className` | `string`, opcional | Classes visuais do `th` |
+| `title` | `string`, opcional | Rótulo exibido no header |
+| `tableProps` | `HeaderContext<User, unknown>` | Contexto do header para leitura de coluna e ordenação |
+
+#### Comportamento
+
+| Regra | Descrição |
+|-------|-------------|
+| Clique no header | Chama `sortColumn()` para alternar ordenação |
+| Estado de filtro inicial | Usa `initialQueryState` para controlar direção e persistência |
+| Classe de ordenação | Aplica `table-sort-asc` ou `table-sort-desc` conforme o estado |
+| Cursor | Mantém `cursor: pointer` quando o header é acionável |
+
+### `UserSelectionHeader`
+
+A seleção em massa fica isolada no header da primeira coluna.
+
+| Elemento | Responsabilidade |
+|----------|-----------------|
+| Checkbox do header | Chama `onSelectAll` |
+| `isAllSelected` | Controla o estado marcado/desmarcado |
+| `w-10px pe-2` | Define o layout da coluna de seleção |
+
+### `CustomRow`
+
+O componente `CustomRow` renderiza apenas as células visíveis da linha.
+
+| Elemento | Responsabilidade |
+|----------|-----------------|
+| `row.getVisibleCells()` | Lista as células ativas para o row atual |
+| `cell.id` | Chave estável para cada `<td>` |
+| `clsx` | Aplica alinhamento à direita na coluna `actions` |
+
+### Filtro por intervalo de datas
+
+`dateRangeFilterFn` é exportada de `src/app/modules/table/DataTable.tsx` para uso em colunas com filtragem por período.
+
+| Campo | Responsabilidade |
+|-------|-----------------|
+| `row` | Linha avaliada no filtro |
+| `columnId` | Identificador da coluna filtrada |
+| `value.start` | Data inicial do intervalo |
+| `value.end` | Data final do intervalo |
+
+O filtro usa `dayjs(row.getValue<Date>(columnId))` e `date.isBetween(value.start, value.end, 'day', '[]')` para avaliar a data por dia com inclusão das bordas.
+
+## Filtros de cupons por período e status
+
+A listagem de cupons usa um filtro composto de intervalo de datas, status e estado de ativação. O componente `CouponListFilter` sincroniza a seleção da interface com a query string e mantém o intervalo em escala de dia completo para leitura consistente no backend.
+
+### Comportamento do filtro
+
+| Entrada | Tratamento |
+|---------|------------|
+| `start_date` e `end_date` na URL | Convertidos para `dayjs(...).startOf('day')` e `dayjs(...).endOf('day')` |
+| `dateRange` na UI | Serializado com formato `YYYY-MM-DDTHH:mm:ss.SSS` |
+| `active` | Lido da URL e refletido no estado local |
+| `status` | Convertido para a opção correspondente no seletor |
+
+### Fluxo de dados
+
+1. O componente lê os filtros da URL.
+2. Datas presentes na query são normalizadas para início e fim do dia.
+3. O estado local `dateRange` recebe objetos `Date` prontos para o calendário.
+4. O objeto `filters` é preenchido com timestamps em formato ISO local sem timezone explícito.
+5. `setFilter(filters)` persiste a seleção para a consulta da listagem.
+
+### Serialização de datas
+
+| Situação | Formato |
+|----------|---------|
+| Filtro aplicado na interface | `YYYY-MM-DDTHH:mm:ss.SSS` |
+| Valor exibido para seleção | `Date` com início e fim do dia |
+| Recarregamento da página | Leitura da URL e restauração do estado do filtro |
+
+## Tipagem de elementos React em componentes de interface
+
+Alguns componentes de dropdown, modal e seleção usam `React.JSX.Element` em vez de `JSX.Element` para tipagem explícita do retorno de elementos React. Isso aparece em itens de ação, opções de seletor e elementos renderizados por configuração.
+
+### Componentes relacionados
+
+| Arquivo | Responsabilidade |
+|---------|-----------------|
+| `src/app/modules/widgets/Dropdown/BulkActionsDropdown.tsx` | Tipagem de `element` em ações em massa |
+| `src/app/modules/widgets/Dropdown/RowMenuDropdown.tsx` | Tipagem de `element` em ações de menu de linha |
+| `src/app/pages/home/calendar/modal/AddAppointmentModal.tsx` | Tipagem da label de opções de cor |
+| `src/app/pages/home/calendar/modal/EditAppointmentModal.tsx` | Importação explícita de `JSX` para tipagem local |
+
+### Uso de `React.JSX.Element`
+
+| Contexto | Tipo |
+|---------|------|
+| Elemento customizado em ação de dropdown | `React.JSX.Element` |
+| Label que aceita texto ou componente | `string | React.JSX.Element` |
+| Importação de tipo em modal | `type JSX` de `react` |
+
 ## Veja Também
 
 - [Error Handling](/arquitetura/error-handling/) — Tratamento centralizado de erros, incluindo erros de autenticação
