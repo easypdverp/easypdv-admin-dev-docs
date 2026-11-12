@@ -5,6 +5,12 @@ sidebar:
   order: 1
 ---
 
+## Pagina atual: CI/CD
+Secao: infraestrutura
+
+
+## Conteudo atual da pagina:
+
 O Despensinha ERP utiliza **GitHub Actions** para CI/CD, com 9 workflows que cobrem release automático, validação de PRs, análise estática e de vulnerabilidades, sincronização de branches, auditoria de push direto e dispatch de documentação.
 
 ## Visão Geral
@@ -566,6 +572,19 @@ A página `src/app/pages/setup/SetupPage.tsx` utiliza `useMutation` e `useQuery`
 | `enabled` | `!!stepper` | Executa somente após a instância do stepper existir |
 | `meta.suppressGlobalError` | `true` | Mantém erro sem toast global |
 
+#### Upload de logotipo no setup
+
+A rotina `setupLogo(image, onUploadProgress)` envia o arquivo de imagem diretamente como `multipart/form-data` para o endpoint de logo do setup.
+
+| Item | Tipo | Descrição |
+|------|------|-------------|
+| `image` | `File` | Arquivo selecionado no formulário de upload |
+| `onUploadProgress` | `(progressEvent: AxiosProgressEvent) => void` | Callback de progresso da requisição HTTP |
+| `formData.append('file', image)` | `FormData` | Envia o `File` original sem reconstrução do nome do arquivo |
+| `SetupEndpoints.setLogo` | endpoint | Destino da requisição de upload |
+
+O fluxo preserva o arquivo recebido do input de upload, mantendo nome, tipo MIME e metadados do objeto `File` no payload enviado ao backend.
+
 ### SubscriptionPage
 
 A página `src/app/pages/subscription/SubscriptionPage.tsx` usa o componente `PageShell` para encapsular o conteúdo da assinatura com título padronizado.
@@ -580,35 +599,36 @@ O `PageShell` fornece a moldura da página e substitui a estrutura manual com co
 
 ### SubscriptionBillingTab
 
-O componente `src/app/pages/subscription/components/SubscriptionBillingTab.tsx` controla os dados de cobrança do sistema.
+O componente `src/app/pages/subscription/components/SubscriptionBillingTab.tsx` controla os dados de cobrança do sistema e integra permissões de edição por meio do contexto de capacidade da aplicação.
 
-| Hook | Função | Estado observado |
-|------|--------|------------------|
-| `useQuery` | Busca os dados de cobrança | `isPending: isBillingLoading` |
-| `useMutation` | Salva os dados de cobrança | `isPending` controla botão e envio |
-| `useFormik` | Gerencia formulário | Integra `initialValues`, validação e submit |
-| `SystemNotification.success` | Feedback positivo | Exibe confirmação após salvar |
-| `SystemNotification.error` | Feedback de erro | Exibe mensagem retornada por `getErrorMessage(error)` |
+| Hook/Componente | Função | Estado/prop observado |
+|-----------------|--------|-----------------------|
+| `useCan` | Verifica permissão de ação | `RESOURCES.GERENCIAR_ASSINATURA` + `AdminAction.ALTERAR` |
+| `useCompanyBillings` | Busca os dados de cobrança | `data: billings`, `isPending` |
+| `getCompanyBillingColumns` | Monta colunas da tabela | Recebe `setEditing` e `canChangeBilling` |
+| `EditCompanyBillingModal` | Edição do billing selecionado | Recebe `billing` e `onClose` |
+| `DataTable` | Exibe os registros de cobrança | Usa colunas dinâmicas e lista retornada pela query |
 
 #### Fluxo de dados
 
-1. `useQuery` executa `getSystemBilling()`
-2. A resposta preenche o formulário com `formik.setValues({ ...initialValues, ...response.data })`
-3. O estado de carregamento da consulta é lido por `isBillingLoading`
-4. O formulário envia os dados por `updateSystemBilling(values)` dentro de `mutationFn`
-5. Durante o envio, o botão usa `updateMutation.isPending` para bloquear reenvio e exibir `Salvando...`
-6. Em caso de sucesso, o componente dispara `SystemNotification.success("Dados de cobrança atualizados com sucesso")`
-7. Em caso de erro, o tratamento usa `SystemNotification.error(getErrorMessage(error))`
+1. O hook `useCan(RESOURCES.GERENCIAR_ASSINATURA, AdminAction.ALTERAR)` define se o usuário pode alterar dados de cobrança
+2. `useCompanyBillings()` carrega a lista de registros exibidos na `DataTable`
+3. `useMemo` monta as colunas com `getCompanyBillingColumns(setEditing, canChangeBilling)`
+4. A coluna de ações renderiza `RowMenuDropdown` com o rótulo:
+   - `Editar` quando há permissão de alteração
+   - `Visualizar` quando a ação é apenas de leitura
+5. Ao selecionar um item, `setEditing` armazena o registro em edição
+6. O modal `EditCompanyBillingModal` usa o mesmo controle de permissão para bloquear o envio e ocultar o botão de submissão quando a ação não é permitida
 
 #### Tabela de configuração
 
 | Item | Valor | Uso |
 |------|-------|-----|
-| `queryKey` | `["systemBilling"]` | Cache dos dados de cobrança |
-| `queryFn` | `getSystemBilling()` | Busca informações de cobrança do sistema |
-| `mutationFn` | `updateSystemBilling(values)` | Persiste os dados do formulário |
-| Estado de carregamento | `isPending` | Controla carregamento da consulta e da mutation |
-| Botão de submit | `disabled={updateMutation.isPending}` | Bloqueia submissão durante o envio |
+| Fonte da tabela | `useCompanyBillings()` | Carrega os registros de cobrança |
+| Colunas | `getCompanyBillingColumns(setEditing, canChangeBilling)` | Define exibição e ações por linha |
+| Controle de acesso | `useCan(RESOURCES.GERENCIAR_ASSINATURA, AdminAction.ALTERAR)` | Determina se o usuário pode editar |
+| Modal de edição | `EditCompanyBillingModal` | Edita o billing selecionado |
+| Ação de linha | `RowMenuDropdown` | Exibe `Editar` ou `Visualizar` conforme permissão |
 
 ### SubscriptionDetailsTab
 
@@ -616,8 +636,6 @@ O componente `src/app/pages/subscription/components/SubscriptionDetailsTab.tsx` 
 
 | Consulta | `queryKey` | Função | Dado retornado |
 |----------|------------|--------|----------------|
-| Uso do sistema | `["getSystemUsage"]` | `getSystemUsage()` | `systemUsageData` |
-| Proprietário do sistema | `["getSystemOwner"]` | `getSystemOwner()` | `systemOwnerData` |
 | Módulos do sistema | `["getSystemModules"]` | `getSystemModules()` | `systemModulesData` |
 | Plano da assinatura | `["getSystemPlan"]` | `getSystemPlan()` | `systemPlanData` |
 
@@ -625,8 +643,6 @@ O componente `src/app/pages/subscription/components/SubscriptionDetailsTab.tsx` 
 
 Cada consulta expõe `isPending`, mapeado localmente para os estados:
 
-- `isUsageLoading`
-- `isOwnerLoading`
 - `isModulesLoading`
 - `isPlanLoading`
 
@@ -637,8 +653,6 @@ Esses estados permitem renderização fragmentada dos blocos da interface, sem a
 1. Cada hook `useQuery` chama sua respectiva API
 2. A resposta é retornada em `response.data`
 3. O componente consome os dados por desestruturação:
-   - `systemUsageData`
-   - `systemOwnerData`
    - `systemModulesData`
    - `systemPlanData`
 4. Erros são tratados pelos mecanismos globais de tratamento do cliente HTTP, sem handlers locais em cada consulta
@@ -647,8 +661,6 @@ Esses estados permitem renderização fragmentada dos blocos da interface, sem a
 
 | Consulta | Chave | Observação |
 |----------|-------|------------|
-| Uso | `["getSystemUsage"]` | Consulta de métricas de uso do sistema |
-| Proprietário | `["getSystemOwner"]` | Consulta de identificação do titular |
 | Módulos | `["getSystemModules"]` | Consulta da lista de módulos habilitados |
 | Plano | `["getSystemPlan"]` | Consulta dos dados do plano contratado |
 
