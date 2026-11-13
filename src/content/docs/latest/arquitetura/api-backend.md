@@ -5,7 +5,7 @@ sidebar:
   order: 8
 ---
 
-O admin consome a API `easypdv-main-api-modular`. Esta pagina lista os recursos que a API expõe e o admin ainda não usa, com a versão do backend em que cada um está disponível. Recursos marcados como **develop** ainda não fazem parte de uma release da API e podem mudar de contrato.
+O admin consome a API `easypdv-main-api-modular`. Esta página lista os recursos que a API expõe e o admin ainda não usa, com a versão do backend em que cada um está disponível. Recursos marcados como **develop** ainda não fazem parte de uma release da API e podem mudar de contrato.
 
 | Estado | Significado |
 |--------|-------------|
@@ -127,6 +127,53 @@ A variável de ambiente `NEXUS_BASE_URL` é opcional (`nexus.base-url=${NEXUS_BA
 | `SupplyReportEndpoints.purchaseSuggestionSuppliers` | `/supply/reports/purchase-suggestion/suppliers` | Lista fornecedores disponíveis para o relatório de sugestão de compra |
 | `SupplyReportEndpoints.purchaseSuggestionDestinations` | `/supply/reports/purchase-suggestion/destinations` | Lista destinos disponíveis para o relatório de sugestão de compra |
 
+## Telemetria (`develop`)
+
+`TelemetryEndpoints` concentra os recursos de monitoramento operacional, com rotas de vendas, PDVs, alertas e saúde dos pontos de venda.
+
+| Componente | Path | Uso |
+|-----------|------|-----|
+| `TelemetryEndpoints.sales` | `/telemetry/sales` | Consolidação de vendas para telemetria |
+| `TelemetryEndpoints.posList` | `/telemetry/pos/list` | Lista de PDVs monitorados |
+| `TelemetryEndpoints.alerts` | `telemetry/alert/list` | Lista de alertas de telemetria |
+| `TelemetryEndpoints.openAlertsBySeverity(severity)` | `/telemetry/alert/list/{severity}` | Lista de alertas abertos por severidade |
+| `TelemetryEndpoints.export` | `/telemetry/alert/export` | Exportação de alertas |
+| `TelemetryEndpoints.resume` | `/telemetry/resume` | Resumo geral da telemetria |
+| `TelemetryEndpoints.posHealth` | `/telemetry/pos-health` | Saúde dos PDVs |
+| `TelemetryEndpoints.losses` | `/telemetry/losses` | Perdas monitoradas |
+| `TelemetryEndpoints.alertsOpenCount` | `/telemetry/alert/open-count` | Quantidade de alertas abertos |
+
+### Páginas da telemetria
+
+| Componente | Path | Uso |
+|-----------|------|-----|
+| `TELEMETRY_PAGE_URL` | `/inicio/telemetria` | Página principal da telemetria |
+| `TELEMETRY_POS_DETAIL_PAGE_URL(posId)` | `/inicio/telemetria/pdvs?pdv={posId}` | Detalhe de PDV na telemetria, com filtro por `pdv` |
+| `TELEMETRY_POS_DETAIL_PAGE_URL()` | `/inicio/telemetria/pdvs` | Lista de PDVs sem detalhe selecionado |
+| `TELEMETRY_ALERTS_PAGE_URL` | `/inicio/telemetria/alertas` | Página de alertas da telemetria |
+
+## Agenda: compromissos recorrentes (`develop`)
+
+`AppointmentDto` tem o campo `recurrence` (`AppointmentRecurrenceDto`), dentro das rotas de `/admin/schedule` que o admin já consome para compromissos avulsos; o admin ainda não lê nem envia esse campo (#1431).
+
+`AppointmentRecurrenceDto`: `frequency` (ausente = não repete), `interval`, `weekDays` (repetição semanal), `monthlyMode` (como a repetição mensal escolhe o dia), `endType`, `untilDate` e `occurrenceCount`. O dia do mês, o dia da semana e a posição dele vêm da data de início do compromisso.
+
+## Suprimentos (`develop`)
+
+- `POST /admin/supply/task/supply/{supplyId}/item/supply-all` marca como abastecidos todos os itens pendentes da tarefa em andamento, com a quantidade prevista, registra o histórico de cada item e recalcula os contadores; itens já abastecidos ficam como estão e a tarefa continua em andamento até o `/finish` (#1472).
+- `BuyOrderDto` e `BuyOrderGenerateOrderDto` têm o campo `destination` (`WarehouseSummaryDto`, opcional), o depósito da ordem de compra (#1486).
+- `BuyOrderGenerateRequestDto`, o corpo de `POST /admin/supply/buy-order/generate` (endpoint que o admin já consome), tem `source` (`PurchaseSuggestionOrigin`) e `pointOfSaleId`, sem o campo `company` (#1486).
+- No filtro de sugestão de compra da origem SALES, `pastDays` e `desiredDays` ausentes usam 90 e 7 dias como padrão no backend (#1485).
+
+### Complementos de suprimentos
+
+| Componente | Path | Uso |
+|-----------|------|-----|
+| `PicklistEndpoints.locations(pointOfSaleId)` | `/supply/pick-list/list/locations/{pointOfSaleId}` | Lista locais vinculados ao PDV para a picklist |
+| `SupplyTaskEndpoints.supplyAllItems(supplyId)` | `/supply/task/supply/{supplyId}/item/supply-all` | Abastece todos os itens pendentes da tarefa |
+| `SupplyReportEndpoints.purchaseSuggestionSuppliers` | `/supply/reports/purchase-suggestion/suppliers` | Lista fornecedores disponíveis para o relatório de sugestão de compra |
+| `SupplyReportEndpoints.purchaseSuggestionDestinations` | `/supply/reports/purchase-suggestion/destinations` | Lista destinos disponíveis para o relatório de sugestão de compra |
+
 ## Recursos lançados ainda não consumidos (`v1.52.0`)
 
 - `POST /admin/catalog/category/add/batch` cria as categorias de uma lista que ainda não existem e reaproveita, pelo nome, as que já existem (reativando as inativas); nome de categoria é único (#1332).
@@ -145,9 +192,9 @@ A variável de ambiente `NEXUS_BASE_URL` é opcional (`nexus.base-url=${NEXUS_BA
 - `GET /preferences/user-role/list/assignable` lista papéis atribuíveis.
 - `GET /preferences/config/risk-analysis`, `PUT /preferences/config/risk-analysis` e `GET /preferences/config/risk-analysis/products/list` cobrem a configuração de análise de risco.
 - `GET /sales/reports/risk-analysis` expõe o relatório de análise de risco de vendas.
-- `GET /dashboard/finance/cash-forecast`, `GET /dashboard/finance/list/open-payables`, `GET /dashboard/finance/list/open-receivables`, `GET /dashboard/finance/open-payables` e `GET /dashboard/finance/open-receivables` cobrem blocos do dashboard financeiro.
-- `GET /dashboard/operation/list/stockout`, `GET /dashboard/operation/list/coverage`, `GET /dashboard/operation/turnover`, `GET /dashboard/operation/list/purchase-orders` e `GET /dashboard/operation/list/late-purchases` cobrem blocos do dashboard operacional.
-- `GET /dashboard/sales/daily-margin`, `GET /dashboard/sales/payment-method-values` e `GET /dashboard/sales/coupon-usage` cobrem blocos do dashboard de vendas.
+- `GET /dashboard/finance/cash-forecast`, `GET /dashboard/finance/list/open-payables`, `GET /dashboard/finance/list/open-receivables`, `GET /dashboard/finance/open-payables`, `GET /dashboard/finance/open-receivables`, `GET /dashboard/finance/upcoming-payables` e `GET /dashboard/finance/upcoming-receivables` cobrem blocos do dashboard financeiro.
+- `GET /dashboard/operation/list/stockout`, `GET /dashboard/operation/list/coverage`, `GET /dashboard/operation/turnover`, `GET /dashboard/operation/list/purchase-orders`, `GET /dashboard/operation/list/late-purchases`, `GET /dashboard/operation/loss-rate` e `GET /dashboard/operation/stock-value` cobrem blocos do dashboard operacional.
+- `GET /dashboard/sales/daily-margin`, `GET /dashboard/sales/margin`, `GET /dashboard/sales/month-projection`, `GET /dashboard/sales/revenue-per-resident`, `GET /dashboard/sales/payment-method-values` e `GET /dashboard/sales/coupon-usage` cobrem blocos do dashboard de vendas.
 - `GET /public/interface/login` e `GET /preferences/config/ui/appearance` cobrem a interface pública de login e a aparência da UI.
 - `GET /file-manager/folder/list`, `POST /file-manager/folder/add`, `POST /file-manager/edit/batch`, `POST /file-manager/favorite/add/{attachmentId}` e as rotas correlatas cobrem organização de arquivos, favoritos e compartilhamentos.
 - `VITE_ENABLE_SOCIAL_NETWORK_MOCK`, `VITE_ENABLE_TICKETS_MOCK`, `VITE_ENABLE_TRAININGS_MOCK` e `VITE_ENABLE_CHECKLIST_MOCK` controlam mocks de rede social, chamados, treinamentos e checklist no front-end.
