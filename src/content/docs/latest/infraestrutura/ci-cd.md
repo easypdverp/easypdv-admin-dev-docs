@@ -471,7 +471,9 @@ O pipeline de validação de PRs segue esta sequência:
 
 ## Interface de assinatura
 
-A pagina de assinatura concentra os dados da assinatura em blocos responsivos, organizados com grid Bootstrap e cards de informacao. O componente principal `SubscriptionDetailsTab` renderiza um conjunto de metricas e listas a partir de `systemModulesData` e `systemUsageData`, com comportamento responsivo definido diretamente nas classes utilitarias.
+A página de assinatura concentra os dados da assinatura em blocos responsivos, organizados com grid Bootstrap e cards de informação. O componente principal `SubscriptionDetailsTab` renderiza cartões de plano e classificação conforme o contexto da rede, além de um conjunto de métricas e listas a partir de `systemModulesData` e `systemUsageData`, com comportamento responsivo definido diretamente nas classes utilitárias.
+
+A navegação da área de assinatura também depende do contexto de franquia. O componente `SubscriptionPage` lê a flag `isNetworkFinanceMockEnabled()` e ajusta o título da página e o rótulo da aba de faturas. O `SubscriptionWrapper` escolhe entre `SubscriptionInvoicesTab` e `FranchiseChargesTab` para a rota `faturas`.
 
 ### Estrutura de responsividade
 
@@ -483,31 +485,34 @@ A composição de colunas usa classes como `col-12`, `col-sm-6`, `col-md-4` e `c
 | Cards de resumo operacional | `col-6 col-md-4 col-xl` | 2 colunas no mobile, 3 colunas em telas medias e distribuicao flexivel em telas extra grandes |
 | Cards de indicadores complementares | `col-6 col-md-4 col-xl` | Mesma regra de largura, preservando alinhamento em grade |
 | Cartoes de status e disponibilidade | `col-6 col-md-4 col-xl` | Garante encaixe consistente no bloco final da tela |
+| Cartões de franquia | `row mt-5` com cards internos | Mantém os blocos de contrato e cobranças separados por área visual |
 
-### Dados exibidos por `SubscriptionDetailsTab`
+### Dados exibidos por `SubscriptionPage`
 
 | Fonte de dados | Propriedade | Uso na interface |
 |----------------|------------|------------------|
-| `systemModulesData` | `modules` | Lista os modulos disponiveis da assinatura, renderizada com `map(module => ...)` |
-| `module` | `name` | Usado como `key` de cada item da lista |
-| `systemUsageData` | `system_availability_percentage` | Exibe o percentual de disponibilidade do sistema |
-| `systemUsageData` | demais campos consumidos pelo componente | Alimentam os cards de resumo, contadores e indicadores visuais |
+| `isNetworkFinanceMockEnabled()` | flag booleana | Define o título da página e a aba de cobranças |
+| `isNetworkFinanceMockEnabled()` | flag booleana | Seleciona `FranchiseChargesTab` ou `SubscriptionInvoicesTab` na rota `faturas` |
+| `SubscriptionPage` | `title` | Exibe `Minha Assinatura` ou `Minha franquia` no `PageShell` |
+| `SubscriptionPage` | `invoicesTabName` | Exibe `faturas` ou `cobranças` na navegação por tabs |
 
 ### Componente e fluxo de renderizacao
 
 O componente `SubscriptionDetailsTab` segue um fluxo direto de leitura dos dados e composicao visual:
 
-1. Recebe os dados de assinatura e uso do sistema pelas estruturas de estado/consulta do modulo
-2. Renderiza a grade de modulos quando `systemModulesData.modules.length > 0`
-3. Para cada modulo, monta um card com:
+1. Lê `isNetworkFinanceMockEnabled()` para definir a área de plano exibida
+2. Renderiza `SubscriptionPlanCard` quando a assinatura segue o fluxo padrão
+3. Renderiza `FranchiseContractCard` e `FranchiseClassificationCard` quando a interface está no contexto de rede
+4. Renderiza a grade de modulos quando `systemModulesData.modules.length > 0`
+5. Para cada modulo, monta um card com:
    - nome do modulo
    - informacoes de apoio em layout flexivel
    - container com altura total `h-100`
-4. Renderiza os cards de indicadores com:
+6. Renderiza os cards de indicadores com:
    - icones da familia `ki-outline`
    - valores agregados
    - textos descritivos centralizados
-5. Exibe disponibilidade do sistema com o valor de `systemUsageData?.system_availability_percentage || 0`
+7. Exibe disponibilidade do sistema com o valor de `systemUsageData?.system_availability_percentage || 0`
 
 ### Classes e componentes de layout
 
@@ -519,6 +524,9 @@ O componente `SubscriptionDetailsTab` segue um fluxo direto de leitura dos dados
 | Bloco de metricas | `d-flex flex-column align-items-center justify-content-center` | Centraliza informacoes numericas e textos |
 | Bloco de indicadores | `d-flex flex-column gap-4` | Organiza cards empilhados dentro da coluna |
 | Card interno de status | `p-4 bg-light rounded flex-grow-1` | Mantem o bloco preenchendo toda a altura disponivel |
+| Card de contrato de franquia | `d-flex flex-column gap-6` | Agrupa dados contratuais e metadados de cobrança |
+| Card de cobranças da franqueadora | `d-flex flex-column gap-6` | Agrupa texto explicativo e tabela de cobrança |
+| Card do plano da assinatura | `d-flex flex-column gap-6` | Agrupa status e atributos do plano padrão |
 
 ### Dependencias visuais e comportamento
 
@@ -529,6 +537,10 @@ O componente `SubscriptionDetailsTab` segue um fluxo direto de leitura dos dados
 | Iconografia | `ki-outline ki-chart-line-up-2`, `ki-outline ki-notification-on`, `ki-outline ki-screen` | Representa metrica, alerta e tela/status |
 | Cores | `text-gray-600`, `text-gray-800`, `text-gray-300` | Diferencia dados primarios e secundarios |
 | Estado vazio | condicional `systemModulesData?.modules && systemModulesData.modules.length > 0` | Evita renderizacao da lista quando nao ha modulos |
+| Seleção de abas | `isNetworkFinanceMockEnabled()` | Controla o rótulo da rota `faturas` |
+| Exibição do plano | `SubscriptionPlanCard` | Mostra o plano da assinatura no fluxo padrão |
+| Exibição do contrato | `FranchiseContractCard` | Mostra rede, royalty, taxa e datas de cobrança |
+| Exibição das cobranças | `FranchiseChargesTab` | Mostra a tabela de cobranças da franqueadora |
 
 ### Exemplo de estrutura renderizada
 
@@ -538,6 +550,8 @@ O componente `SubscriptionDetailsTab` segue um fluxo direto de leitura dos dados
 | Indicadores centrais | Cards com metricas numericas e subtitulos centralizados |
 | Disponibilidade do sistema | Percentual exibido em destaque com valor derivado do objeto de uso |
 | Informacoes complementares | Blocos com textos auxiliares e hierarquia visual padronizada |
+| Contrato de franquia | Nome da rede, percentual de royalty, taxa de sistema e datas de geração/vencimento |
+| Cobranças da franqueadora | Tabela com competência, empresa, tipo de cobrança, base, percentual, valor, vencimento e situação |
 
 ## Integração com React Query na aplicação
 
@@ -591,11 +605,25 @@ A página `src/app/pages/subscription/SubscriptionPage.tsx` usa o componente `Pa
 
 | Componente | Responsabilidade | Props |
 |------------|------------------|-------|
-| `PageShell` | Estrutura de página com cabeçalho | `title="Minha Assinatura"` |
+| `PageShell` | Estrutura de página com cabeçalho | `title={title}` |
 | `Outlet` | Renderização das abas-filhas | Recebe a rota ativa de assinatura |
-| `Link` | Navegação entre abas | Gera links para detalhes e cobrança |
+| `Link` | Navegação entre abas | Gera links para detalhes, cobranças e faturas |
 
 O `PageShell` fornece a moldura da página e substitui a estrutura manual com container dedicado. O conteúdo interno mantém a navegação por tabs e o `Outlet` continua responsável por renderizar a aba selecionada.
+
+O título da página é calculado a partir da flag `isNetworkFinanceMockEnabled()`:
+
+| Flag | Título exibido |
+|------|----------------|
+| `false` | `Minha Assinatura` |
+| `true` | `Minha franquia` |
+
+A aba `faturas` também adapta o rótulo apresentado ao usuário:
+
+| Flag | Rótulo da tab |
+|------|---------------|
+| `false` | `faturas` |
+| `true` | `cobranças` |
 
 ### SubscriptionBillingTab
 
@@ -664,6 +692,53 @@ Esses estados permitem renderização fragmentada dos blocos da interface, sem a
 | Módulos | `["getSystemModules"]` | Consulta da lista de módulos habilitados |
 | Plano | `["getSystemPlan"]` | Consulta dos dados do plano contratado |
 
+#### Área de franquia e plano
+
+Quando `isNetworkFinanceMockEnabled()` retorna verdadeiro, `SubscriptionDetailsTab` exibe componentes específicos da operação em rede:
+
+| Componente | Função | Fonte de dados |
+|------------|--------|----------------|
+| `SubscriptionPlanCard` | Exibe o plano contratado no fluxo padrão | `useSystemPlan()` |
+| `FranchiseContractCard` | Exibe contrato de franquia com rede, royalties e taxa fixa | `MOCK_FRANCHISE_CONTRACT` |
+| `FranchiseClassificationCard` | Exibe a classificação da franquia | props do módulo de classificação |
+
+##### `SubscriptionPlanCard`
+
+O componente `SubscriptionPlanCard` encapsula a consulta do plano em `useSystemPlan()`.
+
+| Elemento | Descrição |
+|----------|-----------|
+| `systemPlanData?.status` | Define o badge `Ativo` ou `Inativo` |
+| `systemPlanData?.subscription_plan` | Nome do plano |
+| `systemPlanData?.subscription_periodicity` | Periodicidade contratual |
+| `systemPlanData?.price` | Valor formatado em BRL |
+| `systemPlanData?.last_subscription_date` | Última assinatura formatada em `pt-BR` |
+| `systemPlanData?.modification_date` | Última modificação formatada em `pt-BR` |
+
+##### `FranchiseContractCard`
+
+O componente `FranchiseContractCard` lê `MOCK_FRANCHISE_CONTRACT` e exibe os termos contratuais da rede.
+
+| Campo | Descrição |
+|------|-----------|
+| `network_name` | Nome da rede |
+| `royalty_percentage` | Percentual aplicado sobre a receita bruta do mês |
+| `system_fee_amount` | Taxa de sistema mensal em BRL |
+| `charge_day` | Dia de geração da cobrança no mês seguinte |
+| `due_day` | Dia de vencimento no mês seguinte |
+
+##### `FranchiseChargesTab`
+
+O componente `FranchiseChargesTab` exibe as cobranças da franqueadora em tabela, com leitura via `useFranchiseCharges()`.
+
+| Propriedade | Valor | Uso |
+|-------------|-------|-----|
+| `tableKey` | `franchise-charges` | Identificador da tabela para estado interno |
+| `variant` | `list` | Estilo da tabela em formato de listagem |
+| `perPage` | `20` | Quantidade de linhas por página |
+| `isSearchable` | `false` | Desabilita busca textual |
+| `hasMinHeight` | `false` | Remove altura mínima padrão |
+
 ### Padrões de React Query no ERP
 
 O código da aplicação segue alguns padrões consistentes no uso de `@tanstack/react-query`.
@@ -686,3 +761,109 @@ O código da aplicação segue alguns padrões consistentes no uso de `@tanstack
 | `StepperComponent` | Navegação da etapa de setup | `SetupPage` |
 | `FormikProvider` / `useFormik` | Gerência de formulário | `SubscriptionBillingTab`, `SetupPage` |
 | `useQuery` / `useMutation` | Acesso assíncrono a APIs | Páginas de setup e assinatura |
+| `SubscriptionPlanCard` | Exibe dados do plano da assinatura | `useSystemPlan()` |
+| `FranchiseContractCard` | Exibe dados do contrato de franquia | `MOCK_FRANCHISE_CONTRACT` |
+| `FranchiseChargesTab` | Lista cobranças da rede | `useFranchiseCharges()` |
+
+## Diff das mudancas no ERP:
+```diff
+--- src/app/pages/subscription/SubscriptionPage.tsx ---
+@@ -2,15 +2,18 @@ import 'chartjs-adapter-luxon';
+ import { useMemo } from 'react';
+ import { Link, Outlet, useLocation } from 'react-router-dom';
+ import PageShell from '@/app/components/layout/PageShell';
+-
+-const tabs = [
+-  { id: 'detalhes', name: 'detalhes' },
+-  { id: 'dados_de_cobranca', name: 'dados de cobrança' },
+-  { id: 'faturas', name: 'faturas' },
+-];
++import { isNetworkFinanceMockEnabled } from '@/app/consts/featureFlags';
+ 
+ const SubscriptionPage = () => {
+   const location = useLocation();
++  const isNetworkFinance = isNetworkFinanceMockEnabled();
++  const title = isNetworkFinance ? 'Minha franquia' : 'Minha Assinatura';
++  const invoicesTabName = isNetworkFinance ? 'cobranças' : 'faturas';
++  const tabs = [
++    { id: 'detalhes', name: 'detalhes' },
++    { id: 'dados_de_cobranca', name: 'dados de cobrança' },
++    { id: 'faturas', name: invoicesTabName },
++  ];
+ 
+   const activeTab = useMemo(() => {
+     const pathParts = location.pathname.split('/');
+@@ -18,7 +21,7 @@ const SubscriptionPage = () => {
+   }, [location]);
+ 
+   return (
+-    <PageShell title="Minha Assinatura">
++    <PageShell title={title}>
+       <div className="pt-0 px-4 px-md-10">
+         <ul className="nav nav-tabs nav-line-tabs border-bottom-0 fs-6 d-flex justify-content-between gap-4">
+           <div className="d-flex">
+
+--- src/app/pages/subscription/SubscriptionWrapper.tsx ---
+@@ -3,15 +3,19 @@ import SubscriptionPage from './SubscriptionPage';
+ import SubscriptionDetailsTab from './components/SubscriptionDetailsTab';
+ import SubscriptionBillingTab from './components/SubscriptionBillingTab';
+ import SubscriptionInvoicesTab from './components/SubscriptionInvoicesTab';
++import FranchiseChargesTab from './components/FranchiseChargesTab';
+ import MetronicCard from '@/app/components/layout/MetronicCard';
++import { isNetworkFinanceMockEnabled } from '@/app/consts/featureFlags';
+ 
+ const SubscriptionWrapper = () => {
++  const invoicesTab = isNetworkFinanceMockEnabled() ? <FranchiseChargesTab /> : <SubscriptionInvoicesTab />;
++
+   return (
+     <Routes>
+       <Route element={<SubscriptionPage />}>
+         <Route element={<SubscriptionDetailsTab />} path="detalhes" />
+         <Route element={<SubscriptionBillingTab />} path="dados_de_cobranca" />
+-        <Route element={<SubscriptionInvoicesTab />} path="faturas" />
++        <Route element={invoicesTab} path="faturas" />
+         <Route
+           element={
+             <div className="d-flex flex-column gap-5 gap-lg-9 mt-5">
+
+--- src/app/pages/subscription/components/FranchiseChargesTab.tsx ---
+@@ -0,0 +1,38 @@
++import MetronicCard from '@/app/components/layout/MetronicCard';
++import { DataTable } from '@/app/modules/table/DataTable';
++
++import { franchiseChargeColumns } from '../core/_columns';
++import { useFranchiseCharges } from '../core/_hooks';
++
++const FranchiseChargesTab = () => {
++  const { data: charges = [], isPending } = useFranchiseCharges();
++
++  return (
++    <div className="row mt-5">
++      <MetronicCard className="h-auto" loading={isPending}>
++        <div className="card-body px-4 px-md-6">
++          <div className="d-flex flex-column gap-6">
++            <div className="d-flex flex-column gap-1">
++              <span className="fw-bold fs-3 text-gray-800">Cobranças da franqueadora</span>
++              <span className="text-gray-600 fs-7">
++                Royalty e taxa de sistema do mês corrente e dos três anteriores, por empresa. Cada cobrança entra em
++                Contas a pagar quando nasce.
++              </span>
++            </div>
++            <DataTable
++              columns={franchiseChargeColumns}
++              data={charges}
++              hasMinHeight={false}
++              isSearchable={false}
++              perPage={20}
++              tableKey="franchise-charges"
++              variant="list"
++            />
++          </div>
++        </div>
++      </MetronicCard>
++    </div>
++  );
++};
++
++export default FranchiseChargesTab;
+```

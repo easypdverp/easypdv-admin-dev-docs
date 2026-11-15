@@ -147,7 +147,51 @@ A variável de ambiente `NEXUS_BASE_URL` é opcional (`nexus.base-url=${NEXUS_BA
 - `GET /sales/reports/risk-analysis` expõe o relatório de análise de risco de vendas.
 - `GET /dashboard/finance/cash-forecast`, `GET /dashboard/finance/list/open-payables`, `GET /dashboard/finance/list/open-receivables`, `GET /dashboard/finance/open-payables` e `GET /dashboard/finance/open-receivables` cobrem blocos do dashboard financeiro.
 - `GET /dashboard/operation/list/stockout`, `GET /dashboard/operation/list/coverage`, `GET /dashboard/operation/turnover`, `GET /dashboard/operation/list/purchase-orders` e `GET /dashboard/operation/list/late-purchases` cobrem blocos do dashboard operacional.
-- `GET /dashboard/sales/daily-margin`, `GET /dashboard/sales/payment-method-values` e `GET /dashboard/sales/coupon-usage` cobrem blocos do dashboard de vendas.
+- `GET /dashboard/sales/daily-margin`, `GET /dashboard/sales/payment-method-values`, `GET /dashboard/sales/coupon-usage` e `GET /dashboard/sales/product-hours` cobrem blocos do dashboard de vendas.
 - `GET /public/interface/login` e `GET /preferences/config/ui/appearance` cobrem a interface pública de login e a aparência da UI.
 - `GET /file-manager/folder/list`, `POST /file-manager/folder/add`, `POST /file-manager/edit/batch`, `POST /file-manager/favorite/add/{attachmentId}` e as rotas correlatas cobrem organização de arquivos, favoritos e compartilhamentos.
 - `VITE_ENABLE_SOCIAL_NETWORK_MOCK`, `VITE_ENABLE_TICKETS_MOCK`, `VITE_ENABLE_TRAININGS_MOCK` e `VITE_ENABLE_CHECKLIST_MOCK` controlam mocks de rede social, chamados, treinamentos e checklist no front-end.
+
+## Finanças (`develop`)
+
+### Plano de contas
+
+`ChartOfAccountsEndpoints` expõe o plano de contas financeiro usado pelo módulo de preferências e pelos relatórios financeiros.
+
+| Método | Path | Uso |
+|--------|------|-----|
+| GET | `/preferences/chart-of-accounts` | Detalhe do plano de contas padrão |
+| GET | `/preferences/chart-of-accounts/list` | Lista os planos de contas |
+| POST | `/preferences/chart-of-accounts/add` | Cria um plano de contas |
+| PUT | `/preferences/chart-of-accounts/edit/{id}` | Edita um plano de contas |
+| PATCH | `/preferences/chart-of-accounts/status/{id}` | Ativa ou desativa um plano de contas |
+| PATCH | `/preferences/chart-of-accounts/move/{id}` | Move um plano de contas na hierarquia |
+| DELETE | `/preferences/chart-of-accounts/del/{id}` | Remove um plano de contas |
+| GET | `/preferences/chart-of-accounts/default-plan` | Retorna o plano padrão da empresa |
+| GET | `/preferences/chart-of-accounts/export` | Exporta o plano de contas |
+
+### Relatório de comparação de taxa de adquirente
+
+`FinanceReportEndpoints` expõe a comparação entre taxa negociada e taxa cobrada para adquirentes, com listagem e exportação.
+
+| Método | Path | Uso |
+|--------|------|-----|
+| GET | `/finance/reports/acquirer-fee-comparison/list` | Lista a comparação de taxas de adquirente |
+| GET | `/finance/reports/acquirer-fee-comparison/export` | Exporta a comparação de taxas de adquirente |
+
+## Vendas (`v1.52.0`)
+
+### Dashboard de vendas
+
+`DashboardSalesEndpoints` concentra os blocos analíticos consumidos pelo dashboard de vendas.
+
+| Método | Path | Uso |
+|--------|------|-----|
+| GET | `/dashboard/sales/daily-margin` | Margem diária de vendas |
+| GET | `/dashboard/sales/payment-method-values` | Valores por forma de pagamento |
+| GET | `/dashboard/sales/resume` | Resumo de vendas |
+| GET | `/dashboard/sales/peak-hours` | Horários de pico |
+| GET | `/dashboard/sales/product-hours` | Horários por produto |
+| GET | `/dashboard/sales/coupon-usage` | Uso de cupons |
+| GET | `/dashboard/sales/orders` | Pedidos de venda |
+| GET | `/dashboard/sales/best-sellers/products` | Produtos mais vendidos |
